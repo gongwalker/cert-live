@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>登录 · CertLive 证活</title>
+  <link rel="stylesheet" href="/static/lib/fontawesome/css/all.min.css">
+  <link rel="stylesheet" href="/static/css/login.css">
+</head>
+<body>
+  <div class="grid-bg"></div>
+  <div class="bg-particle p1"></div>
+  <div class="bg-particle p2"></div>
+  <div class="bg-particle p3"></div>
+
+  <div class="login-wrap">
+    <form id="loginForm" class="login-card" autocomplete="off">
+      <div class="login-brand">
+        <img class="brand-logo" src="/static/image/logo.svg" alt="logo">
+        <h1>CertLive 证活</h1>
+        <p class="brand-sub">SSL Certificate Live Monitor</p>
+      </div>
+
+      <div class="field">
+        <label for="username">账号</label>
+        <div class="input-wrap">
+          <i class="fas fa-user input-icon"></i>
+          <input id="username" name="username" type="text" placeholder="请输入账号" required>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="password">密码</label>
+        <div class="input-wrap">
+          <i class="fas fa-lock input-icon"></i>
+          <input id="password" name="password" type="password" placeholder="请输入密码" required>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="captcha">图形验证码</label>
+        <div class="captcha-row">
+          <div class="input-wrap">
+            <i class="fas fa-shield-halved input-icon"></i>
+            <input id="captcha" name="captcha" type="text" placeholder="不区分大小写" maxlength="4" autocomplete="off" required>
+          </div>
+          <img id="captchaImg" class="captcha-img" src="" alt="验证码" title="点击刷新">
+        </div>
+      </div>
+
+      <p id="loginTip" class="login-tip" hidden></p>
+
+      <button type="submit" class="login-btn">
+        <i class="fas fa-right-to-bracket"></i><span>进入证书监控后台</span>
+      </button>
+    </form>
+  </div>
+
+  <footer class="page-footer">
+    <a class="github-link" href="https://github.com/gongwalker/cert-live" target="_blank" rel="noopener">
+      <i class="fab fa-github github-icon"></i><span>github.com/gongwalker/cert-live</span>
+    </a>
+  </footer>
+
+  <script src="/static/js/login.js"></script>
+</body>
+</html>

@@ -1,2 +1,40 @@
-# cert-live
-Lightweight Go SSL certificate monitor, only alert online active certs, auto distinguish wildcard domain certificate, eliminate invalid expiration warnings from retired certificates.
+# CertLive ｜ 证活
+
+## 项目简介
+
+`cert-live` 基于 Golang Gin 开发的轻量化 SSL 证书监控系统，核心差异化优势：**实时探测站点线上正在运行的证书，自动过滤已替换废弃旧证书，无无效过期告警**。
+
+前端采用纯原生 HTML+CSS+JS 实现，无 Vue/React 等前端框架依赖；数据持久化使用 SQLite 单文件数据库，开箱即用无需额外安装 MySQL/PostgreSQL；支持账号登录管理域名、定时巡检、飞书 / 企业微信机器人阶梯告警、数据库备份与恢复全套能力。
+
+## 核心特性
+
+### 精准证书探测
+
+- 直连目标域名 443 端口 TLS 握手，实时抓取线上当前生效证书
+- 自动识别证书类型：泛域名证书 `*.shturl.` / 单域名证书 / 多 SAN 证书
+- 解析证书生效时间、过期时间、剩余有效天数
+- 废弃替换旧证书不会产生过期告警，解决云厂商平台大量误报痛点
+
+### 后台管理能力
+
+- 账号密码登录，权限隔离管理域名数据
+- 域名 CRUD：新增、删除、编辑、模糊搜索、分组管理域名
+- 定时任务自动批量巡检所有录入域名
+
+### 告警通知系统
+
+- 支持企业微信机器人、飞书机器人两种推送渠道
+- 自定义告警阈值：可配置提前 N 天推送过期提醒
+- 仅对当前线上有效证书推送告警，下线 / 废弃域名静默过滤
+
+### 数据持久化与备份
+
+- 内置 SQLite 单文件数据库，无需额外数据库服务
+- 一键导出完整数据库备份文件（`.db`）
+- 支持上传备份文件，一键恢复历史数据
+
+### 极简部署
+
+- Go 单二进制编译产物，Windows / Linux / macOS 全平台运行
+- 前端纯原生 HTML/CSS/JS，无前端构建工具依赖
+- 无中间件依赖，直接启动即可访问 Web 管理面板

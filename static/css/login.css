@@ -1,0 +1,311 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg-from: #0c1425;
+  --bg-mid: #12264a;
+  --bg-to: #081836;
+  --card-bg: rgba(255, 255, 255, 0.06);
+  --card-border: rgba(64, 158, 255, 0.2);
+  --input-bg: rgba(255, 255, 255, 0.05);
+  --input-bg-focus: rgba(255, 255, 255, 0.08);
+  --text-main: #ffffff;
+  --text-sub: #a0c4ee;
+  --text-label: #d0e4fb;
+  --text-placeholder: #7999c2;
+  --accent: #409eff;
+  --accent-2: #2377e8;
+  --accent-3: #40b8ff;
+  --danger: #ff6b6b;
+}
+
+html, body { height: 100%; }
+body {
+  width: 100vw;
+  min-height: 100vh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  font-family: "Microsoft YaHei", -apple-system, BlinkMacSystemFont, "Segoe UI",
+               "PingFang SC", "Hiragino Sans GB", sans-serif;
+  background: linear-gradient(135deg, var(--bg-from) 0%, var(--bg-mid) 50%, var(--bg-to) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  color: var(--text-main);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ===== 背景网格 ===== */
+.grid-bg {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(64, 158, 255, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(64, 158, 255, 0.08) 1px, transparent 1px);
+  background-size: 45px 45px;
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+/* ===== 浮动光粒子 ===== */
+.bg-particle {
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(64, 158, 255, 0.15);
+  filter: blur(8px);
+  animation: float 12s infinite ease-in-out;
+  pointer-events: none;
+  will-change: transform;
+}
+.p1 { width: 180px; height: 180px; top: 10%;  left: 8%;   animation-delay: 0s; }
+.p2 { width: 120px; height: 120px; top: 70%;  right: 12%; animation-delay: 3s; }
+.p3 { width: 90px;  height: 90px;  top: 35%;  right: 20%; animation-delay: 6s; }
+@keyframes float {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50%      { transform: translateY(-40px) scale(1.1); }
+}
+
+/* ===== 玻璃拟态卡片 ===== */
+.login-wrap {
+  position: relative;
+  z-index: 10;
+  width: 100%;
+  max-width: clamp(440px, 32vw, 600px);
+  padding: 20px;
+}
+.login-card {
+  padding: clamp(36px, 3.2vw, 56px) clamp(32px, 2.8vw, 50px) clamp(30px, 2.6vw, 44px);
+  background: var(--card-bg);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--card-border);
+  border-radius: clamp(14px, 1.1vw, 20px);
+  box-shadow: 0 0 clamp(36px, 3vw, 56px) rgba(30, 120, 240, 0.22);
+}
+
+/* ===== 品牌 ===== */
+.login-brand { text-align: center; margin-bottom: clamp(28px, 2.4vw, 40px); }
+.brand-logo {
+  width: clamp(100px, 4.6vw, 84px);
+  height: clamp(100px, 4.6vw, 84px);
+  margin: 0 auto clamp(12px, 1vw, 16px);
+  display: block;
+  object-fit: contain;
+  filter: drop-shadow(0 6px 16px rgba(64, 158, 255, 0.35));
+}
+.login-brand h1 {
+  font-size: clamp(22px, 1.7vw, 30px);
+  font-weight: 600;
+  color: var(--text-main);
+  letter-spacing: 0;
+  margin-bottom: 8px;
+}
+.brand-sub {
+  font-size: clamp(11px, 0.85vw, 13px);
+  color: var(--text-sub);
+  letter-spacing: 2.5px;
+  margin-top: 2px;
+}
+
+/* ===== 表单字段 ===== */
+.field { margin-bottom: clamp(20px, 1.7vw, 28px); }
+.field label {
+  display: block;
+  font-size: 13px;
+  color: var(--text-label);
+  margin-bottom: 8px;
+}
+.input-wrap { position: relative; }
+.input-icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-placeholder);
+  font-size: 14px;
+  pointer-events: none;
+  transition: color .25s;
+}
+.field input {
+  width: 100%;
+  height: clamp(44px, 3.3vw, 54px);
+  background: var(--input-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 9px;
+  padding: 0 16px 0 42px;
+  font-size: clamp(14px, 1vw, 16px);
+  color: var(--text-main);
+  outline: none;
+  transition: border-color .25s, box-shadow .25s, background .25s;
+}
+.field input::placeholder { color: var(--text-placeholder); }
+.field input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 14px rgba(64, 158, 255, 0.35);
+  background: var(--input-bg-focus);
+}
+.input-wrap:focus-within .input-icon { color: var(--accent); }
+
+/* ===== 验证码行 ===== */
+.captcha-row { display: flex; gap: 10px; align-items: stretch; }
+.captcha-row .input-wrap { flex: 1; }
+.captcha-img {
+  height: clamp(44px, 3.3vw, 54px);
+  width: clamp(130px, 9.5vw, 160px);
+  flex-shrink: 0;
+  border: 1px solid var(--card-border);
+  border-radius: 9px;
+  cursor: pointer;
+  background: transparent;
+  object-fit: cover;
+  transition: border-color .25s, box-shadow .25s;
+}
+.captcha-img:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 14px rgba(64, 158, 255, 0.35);
+}
+
+/* ===== 错误提示 ===== */
+.login-tip {
+  font-size: 13px;
+  color: var(--danger);
+  margin-bottom: 14px;
+  padding: 9px 12px;
+  background: rgba(255, 107, 107, 0.1);
+  border: 1px solid rgba(255, 107, 107, 0.3);
+  border-radius: 6px;
+}
+
+/* ===== 登录按钮 ===== */
+.login-btn {
+  width: 100%;
+  height: clamp(46px, 3.5vw, 56px);
+  border: none;
+  border-radius: 9px;
+  background: linear-gradient(90deg, var(--accent-2), var(--accent-3));
+  color: #fff;
+  font-size: clamp(14px, 1.05vw, 17px);
+  font-weight: 500;
+  letter-spacing: 2px;
+  cursor: pointer;
+  transition: box-shadow .25s, transform .15s, opacity .2s;
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+.login-btn:hover {
+  box-shadow: 0 0 22px rgba(64, 170, 255, 0.45);
+  transform: translateY(-2px);
+}
+.login-btn:active { transform: translateY(0); }
+.login-btn[disabled] { opacity: .6; cursor: not-allowed; transform: none; box-shadow: none; }
+.login-btn i { letter-spacing: 0; }
+
+/* ===== 底部提示 ===== */
+.login-hint {
+  text-align: center;
+  margin-top: 18px;
+  font-size: 12px;
+  color: var(--text-sub);
+}
+.login-hint b { color: var(--accent-3); font-weight: 500; margin: 0 2px; }
+.login-hint i { margin-right: 4px; color: var(--accent); }
+
+/* ===== 页面底版权 ===== */
+.page-footer {
+  position: absolute;
+  bottom: 20px;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  text-align: center;
+  font-size: 11px;
+  color: #6a8bb8;
+  letter-spacing: .3px;
+  line-height: 1.7;
+  padding: 0 20px;
+}
+.page-footer .dot {
+  margin: 0 6px;
+  opacity: .5;
+}
+
+/* GitHub 链接 */
+.github-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  font-size: 12px;
+  color: #8aa9cf;
+  text-decoration: none;
+  letter-spacing: .3px;
+  border: 1px solid rgba(64, 158, 255, 0.18);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  transition: color .25s, border-color .25s, box-shadow .25s, background .25s, transform .15s;
+}
+.github-link .github-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+.github-link:hover {
+  color: #cfe2fb;
+  border-color: rgba(64, 158, 255, 0.55);
+  background: rgba(64, 158, 255, 0.08);
+  box-shadow: 0 0 14px rgba(64, 158, 255, 0.25);
+  transform: translateY(-1px);
+}
+
+/* ===== 移动端：表单覆盖全屏 ===== */
+@media (max-width: 768px) {
+  body {
+    display: block;
+    overflow-y: auto;
+    background: var(--bg-from);
+  }
+  /* 背景特效全部隐藏，让卡片独占全屏 */
+  .grid-bg,
+  .bg-particle { display: none !important; }
+
+  .login-wrap {
+    max-width: 100%;
+    width: 100%;
+    min-height: 100vh;
+    padding: 0;
+    margin: 0;
+  }
+  .login-card {
+    width: 100%;
+    min-height: 100vh;
+    box-sizing: border-box;
+    border-radius: 0;
+    border: none;
+    box-shadow: none;
+    background: linear-gradient(135deg, var(--bg-from) 0%, var(--bg-mid) 50%, var(--bg-to) 100%);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    padding: clamp(60px, 12vh, 120px) 24px 60px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+  }
+  .login-brand { margin-bottom: 32px; }
+  .brand-logo { width: 64px; height: 64px; margin-bottom: 12px; }
+  .login-brand h1 { font-size: 22px; }
+  .brand-sub { font-size: 11px; letter-spacing: 2px; }
+  .field { margin-bottom: 18px; }
+  .field input { height: 46px; font-size: 15px; }
+  .captcha-img { height: 46px; width: 130px; }
+  .login-btn { height: 48px; font-size: 15px; }
+  .page-footer {
+    position: static;
+    padding: 24px 24px 36px;
+    background: var(--bg-to);
+    text-align: center;
+  }
+}

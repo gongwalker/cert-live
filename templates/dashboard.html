@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CertLive 证活 · 后台</title>
+  <link rel="stylesheet" href="/static/lib/fontawesome/css/all.min.css">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg-from: #0c1425;
+      --bg-mid: #12264a;
+      --bg-to: #081836;
+      --accent: #409eff;
+      --accent-3: #40b8ff;
+      --text-main: #ffffff;
+      --text-sub: #a0c4ee;
+    }
+    body {
+      min-height: 100vh;
+      font-family: "Microsoft YaHei", -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif;
+      background: linear-gradient(135deg, var(--bg-from) 0%, var(--bg-mid) 50%, var(--bg-to) 100%);
+      color: var(--text-main);
+      -webkit-font-smoothing: antialiased;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 18px 28px;
+      border-bottom: 1px solid rgba(64, 158, 255, 0.18);
+      background: rgba(8, 24, 54, 0.5);
+      backdrop-filter: blur(8px);
+    }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .brand img { width: 36px; height: 36px; border-radius: 9px; }
+    .brand-name { font-size: 18px; font-weight: 600; letter-spacing: 2px; }
+    .brand-sub { font-size: 11px; color: var(--text-sub); letter-spacing: 1.5px; }
+    .topbar-right { display: flex; align-items: center; gap: 18px; font-size: 13px; }
+    .topbar-right .user { color: var(--text-sub); }
+    .topbar-right .user b { color: var(--accent-3); font-weight: 500; margin-left: 4px; }
+    .logout {
+      color: #fff;
+      text-decoration: none;
+      padding: 6px 12px;
+      border: 1px solid rgba(64, 158, 255, 0.3);
+      border-radius: 6px;
+      transition: border-color .2s, box-shadow .2s;
+    }
+    .logout:hover { border-color: var(--accent); box-shadow: 0 0 12px rgba(64, 158, 255, 0.3); }
+    .logout i { margin-right: 4px; }
+
+    main {
+      max-width: 720px;
+      margin: 80px auto;
+      padding: 48px 40px;
+      text-align: center;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(64, 158, 255, 0.2);
+      border-radius: 16px;
+      box-shadow: 0 0 36px rgba(30, 120, 240, 0.18);
+      backdrop-filter: blur(10px);
+    }
+    main h2 {
+      font-size: 22px;
+      font-weight: 500;
+      margin-bottom: 14px;
+      letter-spacing: 1px;
+    }
+    main p {
+      color: var(--text-sub);
+      font-size: 14px;
+      line-height: 1.8;
+    }
+    main p.hint {
+      margin-top: 24px;
+      font-size: 12px;
+      opacity: 0.7;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <img src="/static/image/logo.svg" alt="logo">
+      <div>
+        <div class="brand-name">CertLive 证活</div>
+        <div class="brand-sub">SSL Certificate Live Monitor</div>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <a href="/logout" class="logout"><i class="fas fa-right-from-bracket"></i>退出</a>
+    </div>
+  </header>
+
+  <main>
+    <h2>登录成功，欢迎进入 CertLive 后台</h2>
+    <p>证书监控、域名管理、告警通知等功能页面正在建设中。</p>
+    <p class="hint">（占位页 · 后续接入实际业务 UI）</p>
+  </main>
+</body>
+</html>
