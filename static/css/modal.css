@@ -1,0 +1,119 @@
+/* ===== 通用弹窗组件 =====
+ * 用法：
+ *   触发: <button data-modal-open="myModal">打开</button>
+ *   关闭: <button data-modal-close>取消</button> 或点击遮罩或按 ESC
+ *   结构: <div class="modal-overlay" id="myModal"> <div class="modal-card"> ... </div> </div>
+ * 修饰类：
+ *   .modal-confirm  红色危险按钮
+ *   .modal-primary  蓝色主操作按钮
+ */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 18, 36, 0.65);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity .2s, visibility .2s;
+  padding: 20px;
+}
+.modal-overlay.show {
+  opacity: 1;
+  visibility: visible;
+}
+
+.modal-card {
+  background: linear-gradient(135deg, rgba(18, 38, 74, 0.96), rgba(12, 20, 37, 0.96));
+  border: 1px solid rgba(64, 158, 255, 0.25);
+  border-radius: 14px;
+  padding: 32px 28px 24px;
+  width: 100%;
+  max-width: 360px;
+  text-align: center;
+  color: #fff;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 30px rgba(64, 158, 255, 0.15);
+  transform: translateY(20px) scale(0.95);
+  transition: transform .3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.modal-overlay.show .modal-card {
+  transform: translateY(0) scale(1);
+}
+
+.modal-icon {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 14px;
+  border-radius: 50%;
+  font-size: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.modal-icon.danger  { background: rgba(255, 107, 107, 0.15); color: #ff6b6b; }
+.modal-icon.primary { background: rgba(64, 158, 255, 0.15);  color: #40b8ff; }
+.modal-icon.warning { background: rgba(255, 209, 102, 0.15); color: #ffd166; }
+
+.modal-title {
+  font-size: 17px;
+  font-weight: 600;
+  color: #fff;
+  margin-bottom: 6px;
+}
+.modal-desc {
+  font-size: 13px;
+  color: #a0c4ee;
+  margin-bottom: 22px;
+  line-height: 1.6;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 10px;
+}
+.modal-btn {
+  flex: 1;
+  height: 40px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  transition: background .2s, color .2s, box-shadow .2s, border-color .2s, transform .15s;
+}
+.modal-btn:active { transform: translateY(1px); }
+.modal-btn i { margin-right: 6px; }
+
+.modal-cancel {
+  background: rgba(255, 255, 255, 0.05);
+  color: #a0c4ee;
+  border: 1px solid rgba(64, 158, 255, 0.2);
+}
+.modal-cancel:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.modal-confirm {
+  background: linear-gradient(90deg, #fa5252, #ff6b6b);
+  color: #fff;
+}
+.modal-confirm:hover {
+  box-shadow: 0 4px 14px rgba(255, 107, 107, 0.4);
+}
+
+.modal-primary {
+  background: linear-gradient(90deg, #2377e8, #40b8ff);
+  color: #fff;
+}
+.modal-primary:hover {
+  box-shadow: 0 4px 14px rgba(64, 170, 255, 0.4);
+}

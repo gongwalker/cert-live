@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CertLive 证活 · 后台</title>
   <link rel="stylesheet" href="/static/lib/fontawesome/css/all.min.css">
+  <link rel="stylesheet" href="/static/css/modal.css">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
@@ -89,7 +90,7 @@
       </div>
     </div>
     <div class="topbar-right">
-      <a href="/logout" class="logout"><i class="fas fa-right-from-bracket"></i>退出</a>
+      <a href="/logout" class="logout" data-modal-open="logoutModal"><i class="fas fa-right-from-bracket"></i>退出</a>
     </div>
   </header>
 
@@ -98,5 +99,20 @@
     <p>证书监控、域名管理、告警通知等功能页面正在建设中。</p>
     <p class="hint">（占位页 · 后续接入实际业务 UI）</p>
   </main>
+
+  <!-- 退出确认弹窗 -->
+  <div class="modal-overlay" id="logoutModal" aria-hidden="true">
+    <div class="modal-card">
+      <div class="modal-icon danger"><i class="fas fa-right-from-bracket"></i></div>
+      <h3 class="modal-title">确认退出登录？</h3>
+      <p class="modal-desc">退出后需重新登录才能进入后台</p>
+      <div class="modal-actions">
+        <button class="modal-btn modal-cancel" type="button" data-modal-close>取消</button>
+        <a href="/logout" class="modal-btn modal-confirm"><i class="fas fa-check"></i>确认退出</a>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/js/modal.js"></script>
 </body>
 </html>
