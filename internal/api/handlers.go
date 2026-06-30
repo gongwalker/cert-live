@@ -33,6 +33,13 @@ func (s *Server) DashboardPage(c *gin.Context) {
 	})
 }
 
+// DomainsPage 渲染域名证书监控列表页
+func (s *Server) DomainsPage(c *gin.Context) {
+	c.HTML(http.StatusOK, "domains.html", gin.H{
+		"user": auth.CurrentUser(c),
+	})
+}
+
 // ---------------- 登录 / 登出 / 验证码 ----------------
 
 // Captcha 生成图形验证码（公开接口）

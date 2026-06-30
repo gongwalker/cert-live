@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>域名证书监控 · CertLive 证活</title>
+  <link rel="stylesheet" href="/static/lib/fontawesome/css/all.min.css">
+  <link rel="stylesheet" href="/static/css/domains.css">
+  <link rel="stylesheet" href="/static/css/modal.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-left">
+      <img class="topbar-logo" src="/static/image/logo.svg" alt="logo">
+      <span class="topbar-title">CertLive 证活</span>
+      <nav class="topbar-nav">
+        <a href="/" class="nav-link">概览</a>
+        <a href="/domains" class="nav-link active">域名监控</a>
+      </nav>
+    </div>
+    <div class="topbar-right">
+      <a href="/logout" class="topbar-logout" data-modal-open="logoutModal"><i class="fas fa-right-from-bracket"></i>退出</a>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- 工具栏 -->
+    <div class="toolbar">
+      <div class="toolbar-left">
+        <h2 class="page-title">域名证书监控</h2>
+        <span class="count-badge" id="countBadge">--</span>
+      </div>
+      <div class="toolbar-right">
+        <div class="search-box">
+          <i class="fas fa-magnifying-glass search-icon"></i>
+          <input id="searchInput" type="text" placeholder="搜索域名或说明" autocomplete="off">
+        </div>
+        <select id="groupFilter" class="group-filter" title="按分组筛选">
+          <option value="0">全部分组</option>
+        </select>
+        <button class="btn btn-primary" id="addBtn" type="button">
+          <i class="fas fa-plus"></i>新增域名
+        </button>
+      </div>
+    </div>
+
+    <!-- 列表 -->
+    <div class="table-wrap">
+      <table class="domains-table">
+        <thead>
+          <tr>
+            <th class="col-status">状态</th>
+            <th class="col-host">域名</th>
+            <th class="col-cert">证书</th>
+            <th class="col-expiry">到期时间</th>
+            <th class="col-checked">检测时间</th>
+            <th class="col-notes">说明</th>
+            <th class="col-actions">操作</th>
+          </tr>
+        </thead>
+        <tbody id="domainsBody">
+          <tr class="loading-row"><td colspan="7"><div class="spinner"></div></td></tr>
+        </tbody>
+      </table>
+      <div id="emptyState" class="empty-state" hidden>
+        <i class="fas fa-folder-open"></i>
+        <p>暂无域名数据</p>
+        <button class="btn btn-primary" type="button" onclick="document.getElementById('addBtn').click()">
+          <i class="fas fa-plus"></i>添加第一个域名
+        </button>
+      </div>
+    </div>
+
+    <!-- 分页 -->
+    <div class="pagination" id="pagination" hidden>
+      <button class="page-btn" id="prevPage" type="button"><i class="fas fa-chevron-left"></i></button>
+      <span class="page-info" id="pageInfo">1 / 1</span>
+      <button class="page-btn" id="nextPage" type="button"><i class="fas fa-chevron-right"></i></button>
+      <span class="page-size">每页 <select id="pageSizeSelect"><option>20</option><option>50</option><option>100</option></select> 条</span>
+    </div>
+  </main>
+
+  <!-- 新增 / 编辑域名弹窗 -->
+  <div class="modal-overlay" id="domainModal" aria-hidden="true">
+    <div class="modal-card modal-form-card">
+      <h3 class="modal-title" id="domainModalTitle">新增域名</h3>
+      <form id="domainForm" autocomplete="off">
+        <input type="hidden" id="domainId">
+        <div class="form-row">
+          <label for="hostInput">域名 <span class="req">*</span></label>
+          <input id="hostInput" name="host" type="text" placeholder="example.com" required>
+        </div>
+        <div class="form-row form-row-2">
+          <div>
+            <label for="portInput">端口</label>
+            <input id="portInput" name="port" type="number" value="443" min="1" max="65535">
+          </div>
+          <div>
+            <label for="groupSelect">分组</label>
+            <select id="groupSelect" name="group_id"><option value="">未分组</option></select>
+          </div>
+        </div>
+        <div class="form-row">
+          <label for="notesInput">说明</label>
+          <textarea id="notesInput" name="notes" rows="2" placeholder="可选，备注用途 / 责任人 / 续费信息等"></textarea>
+        </div>
+        <p id="domainFormTip" class="form-tip" hidden></p>
+        <div class="modal-actions">
+          <button class="modal-btn modal-cancel" type="button" data-modal-close>取消</button>
+          <button class="modal-btn modal-primary" type="submit" id="domainSubmitBtn"><i class="fas fa-check"></i>保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 删除确认弹窗 -->
+  <div class="modal-overlay" id="deleteModal" aria-hidden="true">
+    <div class="modal-card">
+      <div class="modal-icon danger"><i class="fas fa-triangle-exclamation"></i></div>
+      <h3 class="modal-title">确认删除该域名？</h3>
+      <p class="modal-desc">将删除 <b id="deleteHostName">--</b> 及其检测记录，不可恢复</p>
+      <div class="modal-actions">
+        <button class="modal-btn modal-cancel" type="button" data-modal-close>取消</button>
+        <button class="modal-btn modal-confirm" type="button" id="deleteConfirmBtn"><i class="fas fa-trash"></i>确认删除</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 退出确认弹窗 -->
+  <div class="modal-overlay" id="logoutModal" aria-hidden="true">
+    <div class="modal-card">
+      <div class="modal-icon danger"><i class="fas fa-right-from-bracket"></i></div>
+      <h3 class="modal-title">确认退出登录？</h3>
+      <p class="modal-desc">退出后需重新登录才能进入后台</p>
+      <div class="modal-actions">
+        <button class="modal-btn modal-cancel" type="button" data-modal-close>取消</button>
+        <a href="/logout" class="modal-btn modal-confirm"><i class="fas fa-check"></i>确认退出</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- 轻量 toast -->
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="/static/js/modal.js"></script>
+  <script src="/static/js/domains.js"></script>
+</body>
+</html>

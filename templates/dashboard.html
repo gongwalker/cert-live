@@ -78,6 +78,20 @@
       font-size: 12px;
       opacity: 0.7;
     }
+    .enter-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 28px;
+      padding: 10px 22px;
+      background: linear-gradient(90deg, #2377e8, #40b8ff);
+      color: #fff;
+      text-decoration: none;
+      border-radius: 8px;
+      font-size: 14px;
+      transition: box-shadow .25s, transform .15s;
+    }
+    .enter-link:hover { box-shadow: 0 0 18px rgba(64, 170, 255, 0.5); transform: translateY(-2px); }
   </style>
 </head>
 <body>
@@ -97,7 +111,7 @@
   <main>
     <h2>登录成功，欢迎进入 CertLive 后台</h2>
     <p>证书监控、域名管理、告警通知等功能页面正在建设中。</p>
-    <p class="hint">（占位页 · 后续接入实际业务 UI）</p>
+    <a href="/domains" class="enter-link">进入域名监控列表 <i class="fas fa-arrow-right"></i></a>
   </main>
 
   <!-- 退出确认弹窗 -->

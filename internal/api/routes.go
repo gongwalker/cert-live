@@ -24,6 +24,7 @@ func (s *Server) routes() http.Handler {
 
 	// 后台页面（需登录）
 	r.GET("/", auth.RequireAuth(), s.DashboardPage)
+	r.GET("/domains", auth.RequireAuth(), s.DomainsPage)
 
 	// 业务接口（需登录）
 	api := r.Group("/api", auth.RequireAuth())

@@ -52,7 +52,7 @@
       .then(function (r) { return r.json(); })
       .then(function (res) {
         if (res.code === 0) {
-          location.href = '/';
+          location.href = '/domains';
         } else {
           showError(res.msg || '登录失败');
         }
