@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -110,12 +111,33 @@ type domainReq struct {
 	Notes   string `json:"notes"`
 }
 
+// normalizeHost 去掉 scheme / path / 查询串，仅保留 host[:port]
+// 例："https://example.com:8443/path" → "example.com:8443"
+func normalizeHost(s string) string {
+	s = strings.TrimSpace(s)
+	lower := strings.ToLower(s)
+	switch {
+	case strings.HasPrefix(lower, "https://"):
+		s = s[len("https://"):]
+	case strings.HasPrefix(lower, "http://"):
+		s = s[len("http://"):]
+	}
+	for i, r := range s {
+		if r == '/' || r == '?' || r == '#' {
+			s = s[:i]
+			break
+		}
+	}
+	return strings.TrimSpace(s)
+}
+
 func (s *Server) handleCreateDomain(c *gin.Context) {
 	var req domainReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
 		return
 	}
+	req.Host = normalizeHost(req.Host)
 	if req.Host == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "host 不能为空"})
 		return
@@ -140,6 +162,11 @@ func (s *Server) handleUpdateDomain(c *gin.Context) {
 	var req domainReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
+		return
+	}
+	req.Host = normalizeHost(req.Host)
+	if req.Host == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "host 不能为空"})
 		return
 	}
 	if req.Port == 0 {

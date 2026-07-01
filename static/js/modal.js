@@ -9,6 +9,7 @@
     var modals = document.querySelectorAll('.modal-overlay');
     if (!modals.length) return;
 
+    // 打开：完整 click 触发（与按钮一致）
     document.addEventListener('click', function (e) {
       var opener = e.target.closest('[data-modal-open]');
       if (opener) {
@@ -18,17 +19,23 @@
           if (opener.tagName === 'A') e.preventDefault();
           open(modal);
         }
-        return;
       }
+    });
+
+    // 关闭：用 mousedown 而不是 click，避免在表单内按下、移动到遮罩松开
+    // 时被浏览器算作"点击遮罩"而误关（click 按规范触发在 mousedown/mouseup
+    // 共同祖先上）
+    document.addEventListener('mousedown', function (e) {
       var closer = e.target.closest('[data-modal-close]');
       if (closer) {
         close(closer.closest('.modal-overlay'));
         return;
       }
+      // 仅当按下点就是遮罩本身（不是遮罩内的卡片）才关闭
       if (e.target.classList.contains('modal-overlay')) {
         close(e.target);
       }
-    });
+    }, true);
 
     document.addEventListener('keydown', function (e) {
       if (e.key !== 'Escape') return;

@@ -4,9 +4,7 @@
   // ===== 状态 =====
   var state = {
     domains: [],
-    groups: [],
     search: '',
-    groupId: 0,
     page: 1,
     pageSize: 20,
     checkingIds: {} // 正在检测中的域名 id
@@ -17,7 +15,6 @@
   var $empty = document.getElementById('emptyState');
   var $count = document.getElementById('countBadge');
   var $search = document.getElementById('searchInput');
-  var $groupFilter = document.getElementById('groupFilter');
   var $pagination = document.getElementById('pagination');
   var $pageInfo = document.getElementById('pageInfo');
   var $prev = document.getElementById('prevPage');
@@ -28,13 +25,20 @@
   // 表单弹窗
   var $form = document.getElementById('domainForm');
   var $formTitle = document.getElementById('domainModalTitle');
-  var $formTip = document.getElementById('domainFormTip');
+  var $formSub = document.getElementById('domainModalSub');
   var $formId = document.getElementById('domainId');
   var $formHost = document.getElementById('hostInput');
-  var $formPort = document.getElementById('portInput');
-  var $formGroup = document.getElementById('groupSelect');
   var $formNotes = document.getElementById('notesInput');
   var $formSubmit = document.getElementById('domainSubmitBtn');
+  var $notesCounter = document.getElementById('notesCounter');
+  var NOTES_MAX = 120;
+
+  function updateNotesCount() {
+    var len = $formNotes.value.length;
+    $notesCounter.textContent = len + ' / ' + NOTES_MAX;
+    $notesCounter.classList.toggle('warn', len >= NOTES_MAX);
+  }
+  $formNotes.addEventListener('input', updateNotesCount);
 
   // 删除弹窗
   var $deleteHost = document.getElementById('deleteHostName');
@@ -47,6 +51,16 @@
     return String(s).replace(/[&<>"']/g, function (c) {
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
     });
+  }
+
+  // 归一化主机名：去掉 scheme、path、查询串、首尾空白
+  // 支持 "https://example.com:8443/path" → "example.com:8443"
+  function normalizeHost(input) {
+    var s = (input || '').trim();
+    if (!s) return '';
+    s = s.replace(/^[a-zA-Z]+:\/\//, ''); // scheme
+    s = s.replace(/[/?#].*$/, '');         // path / query / fragment
+    return s.trim();
   }
 
   function fmtDate(unix) {
@@ -87,13 +101,17 @@
   }
 
   function toast(msg, type) {
-    $toast.textContent = msg;
+    var icon = type === 'error' ? '<i class="fas fa-circle-exclamation"></i>'
+             : type === 'success' ? '<i class="fas fa-circle-check"></i>'
+             : '<i class="fas fa-circle-info"></i>';
+    $toast.innerHTML = icon + '<span>' + escapeHTML(msg) + '</span>';
     $toast.className = 'toast show ' + (type || '');
     $toast.hidden = false;
-    setTimeout(function () {
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function () {
       $toast.className = 'toast ' + (type || '');
       setTimeout(function () { $toast.hidden = true; }, 250);
-    }, 2200);
+    }, 2400);
   }
 
   // ===== API =====
@@ -111,27 +129,8 @@
   }
 
   // ===== 加载 =====
-  function loadGroups() {
-    return api('GET', '/api/groups').then(function (list) {
-      state.groups = list || [];
-      renderGroupOptions($groupFilter, true);
-      renderGroupOptions($formGroup, false);
-    });
-  }
-
-  function renderGroupOptions(select, withAll) {
-    var html = withAll ? '<option value="0">全部分组</option>' : '<option value="">未分组</option>';
-    (state.groups || []).forEach(function (g) {
-      html += '<option value="' + g.id + '">' + escapeHTML(g.name) + '</option>';
-    });
-    var prev = select.value;
-    select.innerHTML = html;
-    select.value = prev;
-  }
-
   function loadDomains() {
     var url = '/api/domains?search=' + encodeURIComponent(state.search);
-    if (state.groupId) url += '&group_id=' + state.groupId;
     $body.innerHTML = '<tr class="loading-row"><td colspan="7"><div class="spinner"></div></td></tr>';
     $empty.hidden = true;
     return api('GET', url).then(function (list) {
@@ -185,10 +184,11 @@
     var st = statusOf(d);
     var checking = state.checkingIds[d.id];
 
-    // 域名
+    // 域名（端口非 443 时才显示）
+    var portSuffix = d.port && d.port !== 443 ? ':' + d.port : '';
     var host = '<td class="col-host"><div class="host-cell">' +
       '<span class="host-name">' + escapeHTML(d.host) + '</span>' +
-      '<span class="host-meta">:' + (d.port || 443) + (d.group_name ? ' · ' + escapeHTML(d.group_name) : '') + '</span>' +
+      (portSuffix ? '<span class="host-meta">' + escapeHTML(portSuffix) + '</span>' : '') +
       '</div></td>';
 
     // 证书
@@ -202,8 +202,9 @@
         sansExtra = '<span class="cert-sans" title="' + escapeHTML(d.sans.join('\n')) + '">+' +
           (d.sans.length - 1) + ' SAN</span>';
       }
-      cert = '<td class="col-cert"><span class="cert-cn">' + escapeHTML(d.subject) + '</span>' +
-        (d.is_wildcard ? '<span class="cert-sans">泛域名</span>' : '') + sansExtra + '</td>';
+      cert = '<td class="col-cert"><div class="cert-cell"><span class="cert-cn" title="' +
+        escapeHTML(d.subject) + '">' + escapeHTML(d.subject) + '</span>' +
+        (d.is_wildcard ? '<span class="cert-sans">泛域名</span>' : '') + sansExtra + '</div></td>';
     }
 
     // 到期时间
@@ -250,13 +251,6 @@
     }, 300);
   });
 
-  // 分组筛选
-  $groupFilter.addEventListener('change', function () {
-    state.groupId = parseInt($groupFilter.value, 10) || 0;
-    state.page = 1;
-    loadDomains();
-  });
-
   // 分页
   $prev.addEventListener('click', function () { if (state.page > 1) { state.page--; render(); } });
   $next.addEventListener('click', function () {
@@ -285,12 +279,11 @@
 
   function openAdd() {
     $formTitle.textContent = '新增域名';
+    $formSub.textContent = '添加后可立即检测证书状态';
     $formId.value = '';
     $formHost.value = '';
-    $formPort.value = '443';
-    $formGroup.value = '';
     $formNotes.value = '';
-    $formTip.hidden = true;
+    updateNotesCount();
     Modal.open('domainModal');
     setTimeout(function () { $formHost.focus(); }, 100);
   }
@@ -299,12 +292,11 @@
     var d = state.domains.find(function (x) { return x.id === id; });
     if (!d) return;
     $formTitle.textContent = '编辑域名';
+    $formSub.textContent = '修改 ' + d.host + ' 的信息';
     $formId.value = d.id;
     $formHost.value = d.host;
-    $formPort.value = d.port || 443;
-    $formGroup.value = d.group_id || '';
     $formNotes.value = d.notes || '';
-    $formTip.hidden = true;
+    updateNotesCount();
     Modal.open('domainModal');
     setTimeout(function () { $formHost.focus(); }, 100);
   }
@@ -320,14 +312,14 @@
   // 表单提交（新增 / 编辑）
   $form.addEventListener('submit', function (e) {
     e.preventDefault();
-    $formTip.hidden = true;
-    var host = $formHost.value.trim();
-    if (!host) { showFormTip('请输入域名'); return; }
-    var port = parseInt($formPort.value, 10) || 443;
-    if (port < 1 || port > 65535) { showFormTip('端口范围 1-65535'); return; }
-    var groupId = $formGroup.value ? parseInt($formGroup.value, 10) : null;
+    var host = normalizeHost($formHost.value);
+    if (!host) {
+      toast('请输入域名', 'error');
+      $formHost.focus();
+      return;
+    }
     var notes = $formNotes.value.trim();
-    var body = { host: host, port: port, group_id: groupId, notes: notes };
+    var body = { host: host, notes: notes };
 
     var id = $formId.value;
     var req = id
@@ -340,16 +332,11 @@
       toast(id ? '已更新' : '已添加', 'success');
       loadDomains();
     }).catch(function (err) {
-      showFormTip('保存失败：' + err.message);
+      toast('保存失败：' + err.message, 'error');
     }).finally(function () {
       $formSubmit.disabled = false;
     });
   });
-
-  function showFormTip(msg) {
-    $formTip.textContent = msg;
-    $formTip.hidden = false;
-  }
 
   // 删除确认
   $deleteConfirm.addEventListener('click', function () {
@@ -388,7 +375,7 @@
   }
 
   // ===== 启动 =====
-  loadGroups().then(loadDomains);
+  loadDomains();
 
   // 定时刷新（每 60s 拉取最新数据，不打断用户操作）
   setInterval(function () {
