@@ -629,11 +629,69 @@
       return;
     }
     $tagList.innerHTML = tags.map(function (t) {
-      return '<div class="tag-item">' +
+      return '<div class="tag-item" draggable="true" data-tag-id="' + t.id + '">' +
+        '<span class="tag-handle" title="拖动排序"><i class="fas fa-grip-vertical"></i></span>' +
         '<span class="tag-name">' + escapeHTML(t.name) + '</span>' +
         '<button type="button" class="tag-delete" data-tag-id="' + t.id + '" title="删除"><i class="fas fa-times"></i></button>' +
       '</div>';
     }).join('');
+  }
+
+  // ===== 拖拽排序（PC 端）=====
+  var draggedItem = null;
+
+  $tagList.addEventListener('dragstart', function (e) {
+    var item = e.target.closest('.tag-item');
+    if (!item) return;
+    draggedItem = item;
+    setTimeout(function () { item.classList.add('dragging'); }, 0);
+    e.dataTransfer.effectAllowed = 'move';
+    // Firefox 需要 setData 才能触发 drag
+    try { e.dataTransfer.setData('text/plain', item.dataset.tagId); } catch (_) {}
+  });
+
+  $tagList.addEventListener('dragover', function (e) {
+    if (!draggedItem) return;
+    e.preventDefault();
+    var after = getDragAfter($tagList, e.clientY);
+    if (after == null) {
+      $tagList.appendChild(draggedItem);
+    } else if (after !== draggedItem) {
+      $tagList.insertBefore(draggedItem, after);
+    }
+  });
+
+  $tagList.addEventListener('dragend', function () {
+    if (!draggedItem) return;
+    draggedItem.classList.remove('dragging');
+    draggedItem = null;
+    saveTagOrder();
+  });
+
+  // 找到鼠标 Y 位置应该插到哪个元素之前
+  function getDragAfter(container, y) {
+    var elems = container.querySelectorAll('.tag-item:not(.dragging)');
+    var closest = { offset: -Infinity, element: null };
+    elems.forEach(function (el) {
+      var box = el.getBoundingClientRect();
+      var offset = y - box.top - box.height / 2;
+      if (offset < 0 && offset > closest.offset) {
+        closest = { offset: offset, element: el };
+      }
+    });
+    return closest.element;
+  }
+
+  function saveTagOrder() {
+    var ids = Array.prototype.slice.call($tagList.querySelectorAll('.tag-item'))
+      .map(function (el) { return parseInt(el.getAttribute('data-tag-id'), 10); });
+    api('PUT', '/api/tags/reorder', { tag_ids: ids }).then(function () {
+      toast('排序已保存', 'success');
+      refreshAllTags();  // 同步给域名表单/筛选条
+    }).catch(function (err) {
+      toast('排序失败：' + err.message, 'error');
+      loadTags();  // 失败时重拉，恢复服务端顺序
+    });
   }
 
   function addTag() {

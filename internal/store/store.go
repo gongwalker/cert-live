@@ -46,6 +46,8 @@ func (s *Store) EnsureSchema() error {
 	if err != nil {
 		return err
 	}
+	// 老库迁移：补 tags.sort_order 列
+	_, _ = s.db.Exec(`ALTER TABLE tags ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0`)
 	for k, v := range map[string]string{
 		"alert_tiers":    "[30,7,1]",
 		"check_interval": "360",
@@ -333,7 +335,7 @@ func (s *Store) SetSetting(key, value string) error {
 // ---------------- tags ----------------
 
 func (s *Store) ListTags() ([]model.Tag, error) {
-	rows, err := s.db.Query(`SELECT id, name FROM tags ORDER BY created_at DESC`)
+	rows, err := s.db.Query(`SELECT id, name FROM tags ORDER BY sort_order ASC, id ASC`)
 	if err != nil {
 		return nil, err
 	}
@@ -350,7 +352,10 @@ func (s *Store) ListTags() ([]model.Tag, error) {
 }
 
 func (s *Store) CreateTag(name string) (model.Tag, error) {
-	res, err := s.db.Exec(`INSERT INTO tags(name, created_at) VALUES(?,?)`, name, nowUnix())
+	// 新标签排到最后
+	res, err := s.db.Exec(`INSERT INTO tags(name, created_at, sort_order)
+		VALUES(?, ?, COALESCE((SELECT MAX(sort_order) FROM tags), -1) + 1)`,
+		name, nowUnix())
 	if err != nil {
 		return model.Tag{}, err
 	}
@@ -361,6 +366,21 @@ func (s *Store) CreateTag(name string) (model.Tag, error) {
 func (s *Store) DeleteTag(id int64) error {
 	_, err := s.db.Exec(`DELETE FROM tags WHERE id=?`, id)
 	return err
+}
+
+// ReorderTags 按 orderedIDs 顺序写入 sort_order（事务批量更新）
+func (s *Store) ReorderTags(orderedIDs []int64) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for i, id := range orderedIDs {
+		if _, err := tx.Exec(`UPDATE tags SET sort_order=? WHERE id=?`, i, id); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // ---------------- backup / restore ----------------

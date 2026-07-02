@@ -266,6 +266,22 @@ func (s *Server) handleDeleteTag(c *gin.Context) {
 	ok(c, nil)
 }
 
+// 重排序标签：body {tag_ids: [3,1,2,4]} → 按此顺序写 sort_order
+func (s *Server) handleReorderTags(c *gin.Context) {
+	var req struct {
+		TagIDs []int64 `json:"tag_ids"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || len(req.TagIDs) == 0 {
+		fail(c, http.StatusBadRequest, "tag_ids 不能为空")
+		return
+	}
+	if err := s.st.ReorderTags(req.TagIDs); err != nil {
+		fail(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	ok(c, nil)
+}
+
 // ---------------- settings ----------------
 
 func (s *Server) handleGetSettings(c *gin.Context) {
