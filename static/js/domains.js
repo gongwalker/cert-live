@@ -254,11 +254,18 @@
     var checking = state.checkingIds[d.id];
 
     // 域名 + 状态徽章 + 标签 + 端口
-    // host + 端口 + 路径（非根路径时显示）
+    // host + 端口 + 路径（非根路径时显示）；URL 解码后展示，失败回退原文
     var portSuffix = d.port && d.port !== 443 ? ':' + d.port : '';
-    var pathSuffix = (d.path && d.path !== '/' && d.path !== '') ? escapeHTML(d.path) : '';
+    var pathSuffix = '';
+    if (d.path && d.path !== '/' && d.path !== '') {
+      var decoded = d.path;
+      try { decoded = decodeURIComponent(d.path); } catch (e) {}
+      pathSuffix = escapeHTML(decoded);
+    }
     var fullHost = escapeHTML(d.host) + (portSuffix ? '<span class="host-port">' + escapeHTML(portSuffix) + '</span>' : '')
                  + (pathSuffix ? '<span class="host-path">' + pathSuffix + '</span>' : '');
+    var href = 'https://' + d.host + portSuffix + (d.path && d.path !== '/' ? d.path : '');
+    var hostLink = '<a class="host-name" href="' + escapeHTML(href) + '" target="_blank" rel="noopener noreferrer" title="新窗口打开">' + fullHost + '</a>';
     var tagsHTML = (d.tags && d.tags.length)
       ? '<div class="domain-tags">' + d.tags.map(function (t) {
           return tagChip(t);
@@ -266,7 +273,7 @@
       : '';
     var httpBadge = httpBadgeHTML(d);  // HTTP 状态码徽章
     var host = '<td class="col-host"><div class="host-cell">' +
-      '<span class="host-name">' + fullHost + '</span>' +
+      hostLink +
       '<div class="host-meta-row">' +
         '<span class="badge ' + st.cls + '">' + st.label + '</span>' +
         httpBadge +
@@ -359,9 +366,16 @@
 
     // 头部：host + 状态 + HTTP 状态 + 操作
     var portSuffix = d.port && d.port !== 443 ? ':' + d.port : '';
-    var pathSuffix = (d.path && d.path !== '/' && d.path !== '') ? escapeHTML(d.path) : '';
+    var pathSuffix = '';
+    if (d.path && d.path !== '/' && d.path !== '') {
+      var decoded = d.path;
+      try { decoded = decodeURIComponent(d.path); } catch (e) {}
+      pathSuffix = escapeHTML(decoded);
+    }
     var fullHost = escapeHTML(d.host) + (portSuffix ? '<span class="host-port">' + escapeHTML(portSuffix) + '</span>' : '')
                  + (pathSuffix ? '<span class="host-path">' + pathSuffix + '</span>' : '');
+    var href = 'https://' + d.host + portSuffix + (d.path && d.path !== '/' ? d.path : '');
+    var hostLink = '<a class="host-name" href="' + escapeHTML(href) + '" target="_blank" rel="noopener noreferrer" title="新窗口打开">' + fullHost + '</a>';
     var tagsHTML = (d.tags && d.tags.length)
       ? '<div class="domain-tags">' + d.tags.map(function (t) {
           return tagChip(t);
@@ -370,7 +384,7 @@
     var httpBadge = httpBadgeHTML(d);
     var head = '<div class="card-head">' +
       '<div class="card-host">' +
-        '<span class="host-name">' + fullHost + '</span>' +
+        hostLink +
         '<div class="host-meta-row">' +
           '<span class="badge ' + st.cls + '">' + st.label + '</span>' +
           httpBadge +

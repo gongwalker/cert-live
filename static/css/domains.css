@@ -355,9 +355,26 @@ tr.dragover-below { box-shadow: inset 0 -2px 0 0 var(--accent); }
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+  transition: color .15s;
 }
-.host-port { color: var(--text-muted); font-weight: 400; }
-.host-path { color: var(--text-muted); font-weight: 400; font-size: 11px; }
+.host-name:hover { color: var(--accent-3); }
+.host-name:hover .host-port,
+.host-name:hover .host-path { color: var(--accent-3); }
+.host-port {
+  color: var(--text-sub);
+  font-weight: 400;
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+  letter-spacing: .3px;
+}
+.host-path {
+  color: var(--text-sub);
+  font-weight: 400;
+  font-size: 11px;
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+  letter-spacing: .3px;
+}
 .host-meta {
   color: var(--text-muted);
   font-size: 11px;
