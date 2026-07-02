@@ -23,7 +23,7 @@ func (s *Server) routes() http.Handler {
 	r.GET("/api/captcha", s.Captcha)
 
 	// 后台页面（需登录）
-	r.GET("/", auth.RequireAuth(), s.DashboardPage)
+	r.GET("/", func(c *gin.Context) { c.Redirect(http.StatusFound, "/domains") })
 	r.GET("/domains", auth.RequireAuth(), s.DomainsPage)
 
 	// 业务接口（需登录）

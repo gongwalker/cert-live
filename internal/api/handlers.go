@@ -29,20 +29,13 @@ func fail(c *gin.Context, code int, msg string) {
 
 // ---------------- 页面 ----------------
 
-// LoginPage 渲染登录页（已登录则跳转首页）
+// LoginPage 渲染登录页（已登录则跳首页 = /domains）
 func (s *Server) LoginPage(c *gin.Context) {
 	if auth.CurrentUser(c) != "" {
-		c.Redirect(http.StatusFound, "/")
+		c.Redirect(http.StatusFound, "/domains")
 		return
 	}
 	c.HTML(http.StatusOK, "login.html", gin.H{})
-}
-
-// DashboardPage 渲染后台首页（占位）
-func (s *Server) DashboardPage(c *gin.Context) {
-	c.HTML(http.StatusOK, "dashboard.html", gin.H{
-		"user": auth.CurrentUser(c),
-	})
 }
 
 // DomainsPage 渲染域名证书监控列表页
