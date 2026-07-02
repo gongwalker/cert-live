@@ -101,7 +101,23 @@ func (s *Store) ListDomains(search string) ([]model.Domain, error) {
 		}
 		out = append(out, d)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(out) > 0 {
+		ids := make([]int64, len(out))
+		for i, d := range out {
+			ids[i] = d.ID
+		}
+		tagsMap, err := s.loadTagsForDomains(ids)
+		if err != nil {
+			return nil, err
+		}
+		for i := range out {
+			out[i].Tags = tagsMap[out[i].ID]
+		}
+	}
+	return out, nil
 }
 
 func (s *Store) GetDomain(id int64) (*model.Domain, error) {
@@ -112,24 +128,88 @@ func (s *Store) GetDomain(id int64) (*model.Domain, error) {
 		}
 		return nil, err
 	}
+	tagsMap, err := s.loadTagsForDomains([]int64{d.ID})
+	if err != nil {
+		return nil, err
+	}
+	d.Tags = tagsMap[d.ID]
 	return &d, nil
 }
 
-func (s *Store) CreateDomain(host string, port int, notes string) (model.Domain, error) {
+func (s *Store) CreateDomain(host string, port int, notes string, tagIDs []int64) (model.Domain, error) {
 	res, err := s.db.Exec(`INSERT INTO domains(host, port, notes, created_at) VALUES(?,?,?,?)`,
 		host, port, nullableString(notes), nowUnix())
 	if err != nil {
 		return model.Domain{}, err
 	}
 	id, _ := res.LastInsertId()
+	if err := s.SetDomainTags(id, tagIDs); err != nil {
+		return model.Domain{}, err
+	}
 	return model.Domain{ID: id, Host: host, Port: port, Notes: notes, CreatedAt: nowUnix()}, nil
 }
 
-// UpdateDomain 更新用户可编辑字段（host/port/notes），不触碰探测结果
-func (s *Store) UpdateDomain(id int64, host string, port int, notes string) error {
+// UpdateDomain 更新用户可编辑字段（host/port/notes/tags），不触碰探测结果
+func (s *Store) UpdateDomain(id int64, host string, port int, notes string, tagIDs []int64) error {
 	_, err := s.db.Exec(`UPDATE domains SET host=?, port=?, notes=? WHERE id=?`,
 		host, port, nullableString(notes), id)
-	return err
+	if err != nil {
+		return err
+	}
+	return s.SetDomainTags(id, tagIDs)
+}
+
+// SetDomainTags 全量替换某域名的标签关联（删除旧的，插入新的）
+func (s *Store) SetDomainTags(domainID int64, tagIDs []int64) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`DELETE FROM domain_tags WHERE domain_id=?`, domainID); err != nil {
+		return err
+	}
+	for _, tagID := range tagIDs {
+		if _, err := tx.Exec(`INSERT OR IGNORE INTO domain_tags(domain_id, tag_id) VALUES(?,?)`, domainID, tagID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// loadTagsForDomains 批量查多对多关联：返回 domainID -> tags 列表
+func (s *Store) loadTagsForDomains(domainIDs []int64) (map[int64][]model.Tag, error) {
+	out := map[int64][]model.Tag{}
+	if len(domainIDs) == 0 {
+		return out, nil
+	}
+	placeholders := ""
+	args := make([]any, 0, len(domainIDs))
+	for i, id := range domainIDs {
+		if i > 0 {
+			placeholders += ","
+		}
+		placeholders += "?"
+		args = append(args, id)
+	}
+	q := `SELECT dt.domain_id, t.id, t.name FROM domain_tags dt
+	      JOIN tags t ON t.id = dt.tag_id
+	      WHERE dt.domain_id IN (` + placeholders + `)
+	      ORDER BY t.name`
+	rows, err := s.db.Query(q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var domainID, tagID int64
+		var tagName string
+		if err := rows.Scan(&domainID, &tagID, &tagName); err != nil {
+			return nil, err
+		}
+		out[domainID] = append(out[domainID], model.Tag{ID: tagID, Name: tagName})
+	}
+	return out, rows.Err()
 }
 
 func (s *Store) DeleteDomain(id int64) error {

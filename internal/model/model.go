@@ -34,6 +34,9 @@ type Domain struct {
 	DaysRemaining int      `json:"days_remaining,omitempty"`
 	LastChecked   int64    `json:"last_checked,omitempty"`
 	LastError     string   `json:"last_error,omitempty"`
+
+	// 多对多标签关联（查询时 JOIN 出来）
+	Tags []Tag `json:"tags,omitempty"`
 }
 
 type Settings struct {

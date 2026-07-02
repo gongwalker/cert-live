@@ -577,6 +577,73 @@ button.cert-tag:focus {
   cursor: not-allowed;
 }
 
+/* ===== 域名表单：标签选择器 ===== */
+.tag-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(64, 158, 255, 0.18);
+  border-radius: 7px;
+  min-height: 42px;
+  max-height: 110px;
+  overflow-y: auto;
+}
+.tag-picker::-webkit-scrollbar { width: 6px; }
+.tag-picker::-webkit-scrollbar-thumb { background: rgba(64, 158, 255, 0.2); border-radius: 3px; }
+
+.tag-chip {
+  padding: 4px 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background .15s, border-color .15s, color .15s;
+}
+.tag-chip:hover {
+  border-color: rgba(64, 158, 255, 0.4);
+  color: var(--text-sub);
+}
+.tag-chip.active {
+  background: rgba(64, 158, 255, 0.2);
+  border-color: var(--accent);
+  color: #fff;
+}
+.tag-chip.active::before {
+  content: '\f00c';
+  font-family: 'Font Awesome 6 Free';
+  font-weight: 900;
+  margin-right: 4px;
+  font-size: 10px;
+}
+.tag-picker-empty {
+  color: var(--text-muted);
+  font-size: 11px;
+  padding: 4px 0;
+}
+
+/* 列表里域名的标签 chip（展示用） */
+.domain-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+.domain-tag {
+  display: inline-flex;
+  padding: 1px 7px;
+  background: rgba(64, 158, 255, 0.1);
+  border: 1px solid rgba(64, 158, 255, 0.2);
+  border-radius: 3px;
+  font-size: 10px;
+  color: var(--accent-3);
+  white-space: nowrap;
+}
+
 /* ===== 设置弹窗：标签管理 ===== */
 .dlg-settings { max-width: 480px; }
 

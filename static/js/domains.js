@@ -31,6 +31,9 @@
   var $formHost = document.getElementById('hostInput');
   var $formNotes = document.getElementById('notesInput');
   var $formSubmit = document.getElementById('domainSubmitBtn');
+  var $tagPicker = document.getElementById('tagPicker');
+  var allTags = [];           // 全部可用标签（设置里管理的）
+  var selectedTagIDs = {};    // 当前表单选中的 tag id → true
   var $notesCounter = document.getElementById('notesCounter');
   var NOTES_MAX = 120;
 
@@ -198,11 +201,17 @@
     var st = statusOf(d);
     var checking = state.checkingIds[d.id];
 
-    // 域名 + 状态徽章（host 第一行，状态第二行，端口可选第三行）
+    // 域名 + 状态徽章 + 标签 + 端口
     var portSuffix = d.port && d.port !== 443 ? ':' + d.port : '';
+    var tagsHTML = (d.tags && d.tags.length)
+      ? '<div class="domain-tags">' + d.tags.map(function (t) {
+          return '<span class="domain-tag">' + escapeHTML(t.name) + '</span>';
+        }).join('') + '</div>'
+      : '';
     var host = '<td class="col-host"><div class="host-cell">' +
       '<span class="host-name">' + escapeHTML(d.host) + '</span>' +
       '<span class="badge ' + st.cls + '">' + st.label + '</span>' +
+      tagsHTML +
       (portSuffix ? '<span class="host-meta">' + escapeHTML(portSuffix) + '</span>' : '') +
       '</div></td>';
 
@@ -280,10 +289,16 @@
     var checking = state.checkingIds[d.id];
 
     // 头部：host + 状态 + 操作
+    var tagsHTML = (d.tags && d.tags.length)
+      ? '<div class="domain-tags">' + d.tags.map(function (t) {
+          return '<span class="domain-tag">' + escapeHTML(t.name) + '</span>';
+        }).join('') + '</div>'
+      : '';
     var head = '<div class="card-head">' +
       '<div class="card-host">' +
         '<span class="host-name">' + escapeHTML(d.host) + '</span>' +
         '<span class="badge ' + st.cls + '">' + st.label + '</span>' +
+        tagsHTML +
       '</div>' +
       '<div class="card-actions">' +
         '<button class="action-btn' + (checking ? ' checking' : '') + '" data-action="check" data-id="' + d.id + '" title="立即检测"' + (checking ? ' disabled' : '') + '><i class="fas fa-bolt"></i></button>' +
@@ -425,6 +440,8 @@
     $formId.value = '';
     $formHost.value = '';
     $formNotes.value = '';
+    selectedTagIDs = {};
+    renderTagPicker();
     updateNotesCount();
     Modal.open('domainModal');
     setTimeout(function () { $formHost.focus(); }, 100);
@@ -438,9 +455,46 @@
     $formId.value = d.id;
     $formHost.value = d.host;
     $formNotes.value = d.notes || '';
+    selectedTagIDs = {};
+    (d.tags || []).forEach(function (t) { selectedTagIDs[t.id] = true; });
+    renderTagPicker();
     updateNotesCount();
     Modal.open('domainModal');
     setTimeout(function () { $formHost.focus(); }, 100);
+  }
+
+  // 渲染标签选择器（基于 allTags 和 selectedTagIDs）
+  function renderTagPicker() {
+    if (!allTags.length) {
+      $tagPicker.innerHTML = '<span class="tag-picker-empty">暂无标签，请先到右上角「设置」添加</span>';
+      return;
+    }
+    $tagPicker.innerHTML = allTags.map(function (t) {
+      var active = selectedTagIDs[t.id] ? ' active' : '';
+      return '<button type="button" class="tag-chip' + active + '" data-tag-id="' + t.id + '">' +
+        escapeHTML(t.name) + '</button>';
+    }).join('');
+  }
+
+  // 点击 chip 切换选中
+  $tagPicker.addEventListener('click', function (e) {
+    var chip = e.target.closest('.tag-chip');
+    if (!chip) return;
+    var id = parseInt(chip.getAttribute('data-tag-id'), 10);
+    if (selectedTagIDs[id]) {
+      delete selectedTagIDs[id];
+      chip.classList.remove('active');
+    } else {
+      selectedTagIDs[id] = true;
+      chip.classList.add('active');
+    }
+  });
+
+  // 拉取标签列表（启动时和打开设置弹窗后都调一次）
+  function refreshAllTags() {
+    return api('GET', '/api/tags').then(function (list) {
+      allTags = list || [];
+    }).catch(function () {});
   }
 
   function openDelete(id) {
@@ -461,7 +515,8 @@
       return;
     }
     var notes = $formNotes.value.trim();
-    var body = { host: host, notes: notes };
+    var tagIDs = Object.keys(selectedTagIDs).map(function (s) { return parseInt(s, 10); });
+    var body = { host: host, notes: notes, tag_ids: tagIDs };
 
     var id = $formId.value;
     var req = id
@@ -553,6 +608,7 @@
       $tagInput.value = '';
       toast('已添加', 'success');
       loadTags();
+      refreshAllTags();  // 同步给域名表单的标签选择器
     }).catch(function (err) {
       toast('添加失败：' + err.message, 'error');
     });
@@ -571,6 +627,7 @@
     api('DELETE', '/api/tags/' + id).then(function () {
       toast('已删除', 'success');
       loadTags();
+      refreshAllTags();  // 同步给域名表单的标签选择器
     }).catch(function (err) {
       toast('删除失败：' + err.message, 'error');
     });
@@ -585,7 +642,7 @@
   });
 
   // ===== 启动 =====
-  loadDomains();
+  refreshAllTags().then(loadDomains);
 
   // 定时刷新（每 60s 拉取最新数据，不打断用户操作）
   setInterval(function () {

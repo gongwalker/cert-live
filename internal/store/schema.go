@@ -63,6 +63,13 @@ CREATE TABLE IF NOT EXISTS tags (
   name TEXT UNIQUE NOT NULL,
   created_at INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS domain_tags (
+  domain_id INTEGER NOT NULL REFERENCES domains(id) ON DELETE CASCADE,
+  tag_id INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+  PRIMARY KEY (domain_id, tag_id)
+);
+CREATE INDEX IF NOT EXISTS idx_domain_tags_tag ON domain_tags(tag_id);
 `
 
 const domainListQuery = `

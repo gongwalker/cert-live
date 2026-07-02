@@ -104,9 +104,10 @@ func (s *Server) handleListDomains(c *gin.Context) {
 }
 
 type domainReq struct {
-	Host  string `json:"host"`
-	Port  int    `json:"port"`
-	Notes string `json:"notes"`
+	Host   string  `json:"host"`
+	Port   int     `json:"port"`
+	Notes  string  `json:"notes"`
+	TagIDs []int64 `json:"tag_ids"`
 }
 
 // normalizeHost 去掉 scheme / path / 查询串，仅保留 host[:port]
@@ -143,7 +144,7 @@ func (s *Server) handleCreateDomain(c *gin.Context) {
 	if req.Port == 0 {
 		req.Port = 443
 	}
-	d, err := s.st.CreateDomain(req.Host, req.Port, req.Notes)
+	d, err := s.st.CreateDomain(req.Host, req.Port, req.Notes, req.TagIDs)
 	if err != nil {
 		fail(c, http.StatusInternalServerError, err.Error())
 		return
@@ -170,7 +171,7 @@ func (s *Server) handleUpdateDomain(c *gin.Context) {
 	if req.Port == 0 {
 		req.Port = 443
 	}
-	if err := s.st.UpdateDomain(id, req.Host, req.Port, req.Notes); err != nil {
+	if err := s.st.UpdateDomain(id, req.Host, req.Port, req.Notes, req.TagIDs); err != nil {
 		fail(c, http.StatusInternalServerError, err.Error())
 		return
 	}
