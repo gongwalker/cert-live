@@ -245,6 +245,20 @@ body {
   color: var(--text-sub);
   border-color: rgba(64, 158, 255, 0.4);
 }
+/* 彩色标签 chip：用 CSS 变量 --tc 控制 fade/hover/active 三态，
+   这样 :hover 才能覆盖（inline style 没法被 :hover 覆盖） */
+.filter-chip.has-color {
+  border-color: rgba(var(--tc), 0.35);
+}
+.filter-chip.has-color:hover {
+  border-color: rgba(var(--tc), 0.85);
+  color: rgb(var(--tc));
+}
+.filter-chip.has-color.active {
+  border-color: rgb(var(--tc));
+  background: rgba(var(--tc), 0.4);
+  color: #fff;
+}
 .filter-chip.active {
   background: rgba(64, 158, 255, 0.22);
   border-color: var(--accent);

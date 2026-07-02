@@ -110,6 +110,15 @@
     return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
   }
 
+  // hex → "r, g, b" 三元组（用于 CSS 变量 --tc，配合 rgba(var(--tc), a) 用）
+  function hexToRgbTriplet(hex) {
+    if (!hex || hex[0] !== '#' || hex.length < 7) return '';
+    var r = parseInt(hex.slice(1, 3), 16);
+    var g = parseInt(hex.slice(3, 5), 16);
+    var b = parseInt(hex.slice(5, 7), 16);
+    return r + ',' + g + ',' + b;
+  }
+
   // 渲染单个标签 chip：带颜色（无颜色时回退默认蓝，由 CSS 控制）
   // opts: {cls: 自定义类, active: 是否高亮（高亮时强制主题蓝）, withIcon: 是否带图标}
   function tagChip(t, opts) {
@@ -701,13 +710,13 @@
     html += allTags.map(function (t) {
       var isActive = !!state.filterTagIDs[t.id];
       var iconHTML = t.icon ? '<i class="fas ' + escapeHTML(t.icon) + '"></i>' : '';
+      var cls = 'filter-chip' + (isActive ? ' active' : '') + (t.color ? ' has-color' : '');
       var style = '';
       if (t.color) {
-        var bg = hexToRgba(t.color, isActive ? 0.4 : 0.15);
-        var textColor = isActive ? '#fff' : t.color;
-        style = ' style="background:' + bg + ';border-color:' + t.color + ';color:' + textColor + ';"';
+        // 用 CSS 变量 --tc 携带颜色，让 CSS 控制 fade/hover/active 三态
+        style = ' style="--tc:' + hexToRgbTriplet(t.color) + ';background:rgba(var(--tc),' + (isActive ? 0.4 : 0.15) + ');color:' + (isActive ? '#fff' : escapeHTML(t.color)) + ';"';
       }
-      return '<button type="button" class="filter-chip' + (isActive ? ' active' : '') + '" data-filter-tag-id="' + t.id + '"' + style + '>' +
+      return '<button type="button" class="' + cls + '" data-filter-tag-id="' + t.id + '"' + style + '>' +
         iconHTML + escapeHTML(t.name) + '</button>';
     }).join('');
     $tagFilter.innerHTML = html;
