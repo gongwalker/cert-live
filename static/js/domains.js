@@ -5,10 +5,9 @@
   var state = {
     domains: [],
     search: '',
-    filterTagIDs: {},  // 多标签 AND 筛选
-    sortMode: 'manual',  // manual | expiry_asc | expiry_desc
-    page: 1,
-    pageSize: 20,
+    filterTagIDs: {},     // 多标签 AND 筛选
+    filterExpiringSoon: false,  // 10 天内到期快捷筛选
+    sortMode: 'manual',   // manual | expiry_asc | expiry_desc
     checkingIds: {} // 正在检测中的域名 id
   };
 
@@ -18,11 +17,6 @@
   var $empty = document.getElementById('emptyState');
   var $count = document.getElementById('countBadge');
   var $search = document.getElementById('searchInput');
-  var $pagination = document.getElementById('pagination');
-  var $pageInfo = document.getElementById('pageInfo');
-  var $prev = document.getElementById('prevPage');
-  var $next = document.getElementById('nextPage');
-  var $pageSize = document.getElementById('pageSizeSelect');
   var $toast = document.getElementById('toast');
 
   // 表单弹窗
@@ -206,6 +200,12 @@
   // manual: 用后端 sort_order 返回顺序；expiry_asc/desc: 按到期时间排（错误/未检测放最后）
   function filteredSorted() {
     var list = state.domains.slice();
+    if (state.filterExpiringSoon) {
+      list = list.filter(function (d) {
+        // 排除错误/未检测；剩余天数 0-9（含已过期视为不在此筛选范围）
+        return !d.last_error && d.not_after && d.days_remaining >= 0 && d.days_remaining < 10;
+      });
+    }
     if (state.sortMode === 'expiry_asc' || state.sortMode === 'expiry_desc') {
       var dir = state.sortMode === 'expiry_asc' ? 1 : -1;
       list.sort(function (a, b) {
@@ -223,30 +223,19 @@
   function render() {
     var list = filteredSorted();
     $count.textContent = list.length + ' 条';
+    renderTagFilter();  // 同步刷新筛选条（即将到期数量 + 已选标签态）
 
     if (!list.length) {
       $body.innerHTML = '';
       $cardList.innerHTML = '';
       $empty.hidden = false;
-      $pagination.hidden = true;
       return;
     }
     $empty.hidden = true;
 
-    var totalPages = Math.max(1, Math.ceil(list.length / state.pageSize));
-    if (state.page > totalPages) state.page = totalPages;
-    var start = (state.page - 1) * state.pageSize;
-    var slice = list.slice(start, start + state.pageSize);
-
-    // 双视图同步渲染（CSS 决定显示哪个）
-    $body.innerHTML = slice.map(renderRow).join('');
-    $cardList.innerHTML = slice.map(renderCard).join('');
-
-    // 分页
-    $pagination.hidden = totalPages <= 1;
-    $pageInfo.textContent = state.page + ' / ' + totalPages;
-    $prev.disabled = state.page <= 1;
-    $next.disabled = state.page >= totalPages;
+    // 双视图同步渲染（CSS 决定显示哪个）；无分页，一次渲染全部
+    $body.innerHTML = list.map(renderRow).join('');
+    $cardList.innerHTML = list.map(renderCard).join('');
   }
 
   function renderRow(d) {
@@ -344,12 +333,10 @@
       '<button class="action-btn danger" data-action="delete" data-id="' + d.id + '" title="删除"><i class="fas fa-trash"></i></button>' +
       '</td>';
 
-    // 拖拽手柄（仅在 manual 排序 + 无搜索/筛选 + 无分页 时启用）
-    var isPaginated = state.domains.length > state.pageSize;
+    // 拖拽手柄（仅在 manual 排序 + 无搜索/筛选 时启用）
     var canDrag = state.sortMode === 'manual'
                && !state.search
-               && Object.keys(state.filterTagIDs).length === 0
-               && !isPaginated;
+               && Object.keys(state.filterTagIDs).length === 0;
     var drag = '<td class="col-drag">' +
       (canDrag ? '<span class="drag-handle" title="拖动排序"><i class="fas fa-grip-vertical"></i></span>' : '') +
       '</td>';
@@ -463,21 +450,8 @@
     clearTimeout(searchTimer);
     searchTimer = setTimeout(function () {
       state.search = $search.value.trim();
-      state.page = 1;
       loadDomains();
     }, 300);
-  });
-
-  // 分页
-  $prev.addEventListener('click', function () { if (state.page > 1) { state.page--; render(); } });
-  $next.addEventListener('click', function () {
-    var total = Math.ceil(state.domains.length / state.pageSize);
-    if (state.page < total) { state.page++; render(); }
-  });
-  $pageSize.addEventListener('change', function () {
-    state.pageSize = parseInt($pageSize.value, 10) || 20;
-    state.page = 1;
-    render();
   });
 
   // 表格 + 卡片双视图共用事件委托
@@ -506,7 +480,6 @@
   $sortExpiry.addEventListener('click', function () {
     var cur = SORT_CYCLE.indexOf(state.sortMode);
     state.sortMode = SORT_CYCLE[(cur + 1) % SORT_CYCLE.length];
-    state.page = 1;
     updateSortIndicator();
     render();
   });
@@ -717,13 +690,14 @@
   var $tagFilter = document.getElementById('tagFilter');
 
   function renderTagFilter() {
-    if (!allTags.length) {
-      $tagFilter.hidden = true;
-      $tagFilter.innerHTML = '';
-      return;
-    }
+    // 永远显示筛选行（至少有"10天内到期"快捷过滤）
     $tagFilter.hidden = false;
     var html = '<span class="tag-filter-label"><i class="fas fa-filter"></i></span>';
+    // 10 天内到期快捷过滤（永远显示，永远可点）
+    var expActive = state.filterExpiringSoon;
+    html += '<button type="button" class="filter-chip filter-expiring' + (expActive ? ' active' : '') + '" data-filter-expiring="1" title="筛选 10 天内到期的域名">' +
+      '<i class="fas fa-triangle-exclamation"></i> 10天内到期' +
+    '</button>';
     html += allTags.map(function (t) {
       var isActive = !!state.filterTagIDs[t.id];
       var iconHTML = t.icon ? '<i class="fas ' + escapeHTML(t.icon) + '"></i>' : '';
@@ -740,6 +714,13 @@
   }
 
   $tagFilter.addEventListener('click', function (e) {
+    // 10 天内到期快捷过滤（客户端筛选，直接 render）
+    var expiringBtn = e.target.closest('[data-filter-expiring]');
+    if (expiringBtn) {
+      state.filterExpiringSoon = !state.filterExpiringSoon;
+      render();
+      return;
+    }
     var chip = e.target.closest('.filter-chip');
     if (!chip) return;
     var id = parseInt(chip.getAttribute('data-filter-tag-id'), 10);
@@ -750,7 +731,6 @@
       state.filterTagIDs[id] = true;
       chip.classList.add('active');
     }
-    state.page = 1;
     loadDomains();
   });
 
