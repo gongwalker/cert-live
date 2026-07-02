@@ -206,7 +206,7 @@ func (s *Store) SetDomainTags(domainID int64, tagIDs []int64) error {
 	return tx.Commit()
 }
 
-// loadTagsForDomains 批量查多对多关联：返回 domainID -> tags 列表
+// loadTagsForDomains 批量查多对多关联：返回 domainID -> tags 列表（含 icon/color）
 func (s *Store) loadTagsForDomains(domainIDs []int64) (map[int64][]model.Tag, error) {
 	out := map[int64][]model.Tag{}
 	if len(domainIDs) == 0 {
@@ -221,10 +221,11 @@ func (s *Store) loadTagsForDomains(domainIDs []int64) (map[int64][]model.Tag, er
 		placeholders += "?"
 		args = append(args, id)
 	}
-	q := `SELECT dt.domain_id, t.id, t.name FROM domain_tags dt
+	q := `SELECT dt.domain_id, t.id, t.name, COALESCE(t.icon,''), COALESCE(t.color,'')
+	      FROM domain_tags dt
 	      JOIN tags t ON t.id = dt.tag_id
 	      WHERE dt.domain_id IN (` + placeholders + `)
-	      ORDER BY t.name`
+	      ORDER BY t.sort_order ASC, t.id ASC`
 	rows, err := s.db.Query(q, args...)
 	if err != nil {
 		return nil, err
@@ -232,11 +233,13 @@ func (s *Store) loadTagsForDomains(domainIDs []int64) (map[int64][]model.Tag, er
 	defer rows.Close()
 	for rows.Next() {
 		var domainID, tagID int64
-		var tagName string
-		if err := rows.Scan(&domainID, &tagID, &tagName); err != nil {
+		var tagName, icon, color string
+		if err := rows.Scan(&domainID, &tagID, &tagName, &icon, &color); err != nil {
 			return nil, err
 		}
-		out[domainID] = append(out[domainID], model.Tag{ID: tagID, Name: tagName})
+		out[domainID] = append(out[domainID], model.Tag{
+			ID: tagID, Name: tagName, Icon: icon, Color: color,
+		})
 	}
 	return out, rows.Err()
 }

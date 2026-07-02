@@ -500,9 +500,13 @@
     $tagPicker.innerHTML = allTags.map(function (t) {
       var isActive = !!selectedTagIDs[t.id];
       var iconHTML = t.icon ? '<i class="fas ' + escapeHTML(t.icon) + '"></i>' : '';
-      var style = (t.color && !isActive)
-        ? ' style="background:' + hexToRgba(t.color, 0.18) + ';border-color:' + hexToRgba(t.color, 0.5) + ';color:' + escapeHTML(t.color) + ';"'
-        : '';
+      var style = '';
+      if (t.color) {
+        // 有颜色：选中态用更深背景 + 白字，未选用浅背景 + 彩字
+        var bg = hexToRgba(t.color, isActive ? 0.45 : 0.15);
+        var textColor = isActive ? '#fff' : t.color;
+        style = ' style="background:' + bg + ';border-color:' + t.color + ';color:' + textColor + ';"';
+      }
       return '<button type="button" class="tag-chip' + (isActive ? ' active' : '') + '" data-tag-id="' + t.id + '"' + style + '>' +
         iconHTML + escapeHTML(t.name) + '</button>';
     }).join('');
@@ -540,13 +544,16 @@
       return;
     }
     $tagFilter.hidden = false;
-    var html = '<span class="tag-filter-label"><i class="fas fa-filter"></i> 标签筛选:</span>';
+    var html = '<span class="tag-filter-label"><i class="fas fa-filter"></i></span>';
     html += allTags.map(function (t) {
       var isActive = !!state.filterTagIDs[t.id];
       var iconHTML = t.icon ? '<i class="fas ' + escapeHTML(t.icon) + '"></i>' : '';
-      var style = (t.color && !isActive)
-        ? ' style="background:' + hexToRgba(t.color, 0.15) + ';border-color:' + hexToRgba(t.color, 0.45) + ';color:' + escapeHTML(t.color) + ';"'
-        : '';
+      var style = '';
+      if (t.color) {
+        var bg = hexToRgba(t.color, isActive ? 0.4 : 0.15);
+        var textColor = isActive ? '#fff' : t.color;
+        style = ' style="background:' + bg + ';border-color:' + t.color + ';color:' + textColor + ';"';
+      }
       return '<button type="button" class="filter-chip' + (isActive ? ' active' : '') + '" data-filter-tag-id="' + t.id + '"' + style + '>' +
         iconHTML + escapeHTML(t.name) + '</button>';
     }).join('');
