@@ -46,7 +46,6 @@
       <table class="domains-table">
         <thead>
           <tr>
-            <th class="col-status">状态</th>
             <th class="col-host">域名</th>
             <th class="col-cert">证书信息</th>
             <th class="col-expiry">到期时间</th>
@@ -56,7 +55,7 @@
           </tr>
         </thead>
         <tbody id="domainsBody">
-          <tr class="loading-row"><td colspan="7"><div class="spinner"></div></td></tr>
+          <tr class="loading-row"><td colspan="6"><div class="spinner"></div></td></tr>
         </tbody>
       </table>
       <div id="emptyState" class="empty-state" hidden>
@@ -67,6 +66,9 @@
         </button>
       </div>
     </div>
+
+    <!-- 移动端卡片视图（与 table-wrap 互斥） -->
+    <div id="cardList" class="card-list" hidden></div>
 
     <!-- 分页 -->
     <div class="pagination" id="pagination" hidden>

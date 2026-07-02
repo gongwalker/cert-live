@@ -12,6 +12,7 @@
 
   // ===== DOM 引用 =====
   var $body = document.getElementById('domainsBody');
+  var $cardList = document.getElementById('cardList');
   var $empty = document.getElementById('emptyState');
   var $count = document.getElementById('countBadge');
   var $search = document.getElementById('searchInput');
@@ -141,13 +142,13 @@
   // ===== 加载 =====
   function loadDomains() {
     var url = '/api/domains?search=' + encodeURIComponent(state.search);
-    $body.innerHTML = '<tr class="loading-row"><td colspan="7"><div class="spinner"></div></td></tr>';
+    $body.innerHTML = '<tr class="loading-row"><td colspan="6"><div class="spinner"></div></td></tr>';
     $empty.hidden = true;
     return api('GET', url).then(function (list) {
       state.domains = list || [];
       render();
     }).catch(function (err) {
-      $body.innerHTML = '<tr><td colspan="7" style="padding:30px;text-align:center;color:#ff6b6b;">加载失败：' +
+      $body.innerHTML = '<tr><td colspan="6" style="padding:30px;text-align:center;color:#ff6b6b;">加载失败：' +
         escapeHTML(err.message) + '</td></tr>';
     });
   }
@@ -170,6 +171,7 @@
 
     if (!list.length) {
       $body.innerHTML = '';
+      $cardList.innerHTML = '';
       $empty.hidden = false;
       $pagination.hidden = true;
       return;
@@ -181,7 +183,9 @@
     var start = (state.page - 1) * state.pageSize;
     var slice = list.slice(start, start + state.pageSize);
 
+    // 双视图同步渲染（CSS 决定显示哪个）
     $body.innerHTML = slice.map(renderRow).join('');
+    $cardList.innerHTML = slice.map(renderCard).join('');
 
     // 分页
     $pagination.hidden = totalPages <= 1;
@@ -194,18 +198,25 @@
     var st = statusOf(d);
     var checking = state.checkingIds[d.id];
 
-    // 域名（端口非 443 时才显示）
+    // 域名 + 状态徽章（host 第一行，状态第二行，端口可选第三行）
     var portSuffix = d.port && d.port !== 443 ? ':' + d.port : '';
     var host = '<td class="col-host"><div class="host-cell">' +
       '<span class="host-name">' + escapeHTML(d.host) + '</span>' +
+      '<span class="badge ' + st.cls + '">' + st.label + '</span>' +
       (portSuffix ? '<span class="host-meta">' + escapeHTML(portSuffix) + '</span>' : '') +
       '</div></td>';
 
     // 证书信息（主体 + 序列号 + 签发CA 整合到一格）
     var cert;
     if (d.last_error || !d.subject) {
-      cert = '<td class="col-cert"><span class="cert-empty">' +
-        (d.last_error ? '检测失败' : '尚未检测') + '</span></td>';
+      var emptyText = d.last_error ? '检测失败' : '尚未检测';
+      var errLine = d.last_error
+        ? '<span class="cert-error"><i class="fas fa-triangle-exclamation"></i> ' + escapeHTML(d.last_error) + '</span>'
+        : '';
+      cert = '<td class="col-cert"><div class="cert-info">' +
+        '<span class="cert-empty">' + emptyText + '</span>' +
+        errLine +
+        '</div></td>';
     } else {
       var sansExtra = '';
       if (d.sans && d.sans.length > 1) {
@@ -230,13 +241,15 @@
       '</div></td>';
     }
 
-    // 到期时间
+    // 到期时间（两行：日期 + 剩 N 天）
     var expiry;
     if (d.last_error || !d.not_after) {
       expiry = '<td class="col-expiry cell-muted">—</td>';
     } else {
-      expiry = '<td class="col-expiry"><span class="expiry-date">' + fmtDate(d.not_after) + '</span>' +
-        daysBadge(d.days_remaining) + '</td>';
+      expiry = '<td class="col-expiry"><div class="cell-time">' +
+        '<span class="expiry-date">' + fmtDate(d.not_after) + '</span>' +
+        daysBadge(d.days_remaining) +
+        '</div></td>';
     }
 
     // 检测时间
@@ -257,9 +270,84 @@
       '</td>';
 
     return '<tr data-id="' + d.id + '">' +
-      '<td class="col-status"><span class="badge ' + st.cls + '">' + st.label + '</span></td>' +
       host + cert + expiry + checked + notes + actions +
       '</tr>';
+  }
+
+  // 渲染移动端卡片视图（与 renderRow 共用 helpers，事件用同一 handler）
+  function renderCard(d) {
+    var st = statusOf(d);
+    var checking = state.checkingIds[d.id];
+
+    // 头部：host + 状态 + 操作
+    var head = '<div class="card-head">' +
+      '<div class="card-host">' +
+        '<span class="host-name">' + escapeHTML(d.host) + '</span>' +
+        '<span class="badge ' + st.cls + '">' + st.label + '</span>' +
+      '</div>' +
+      '<div class="card-actions">' +
+        '<button class="action-btn' + (checking ? ' checking' : '') + '" data-action="check" data-id="' + d.id + '" title="立即检测"' + (checking ? ' disabled' : '') + '><i class="fas fa-bolt"></i></button>' +
+        '<button class="action-btn" data-action="edit" data-id="' + d.id + '" title="编辑"><i class="fas fa-pen"></i></button>' +
+        '<button class="action-btn danger" data-action="delete" data-id="' + d.id + '" title="删除"><i class="fas fa-trash"></i></button>' +
+      '</div>' +
+    '</div>';
+
+    // 错误提示（如果有）
+    var errBox = d.last_error
+      ? '<div class="card-error"><i class="fas fa-triangle-exclamation"></i> ' + escapeHTML(d.last_error) + '</div>'
+      : '';
+
+    // 证书信息块
+    var certBlock = '';
+    if (d.subject && !d.last_error) {
+      var sansExtra = '';
+      if (d.sans && d.sans.length > 1) {
+        sansExtra = '<button type="button" class="cert-tag san-trigger" data-san-id="' + d.id + '" title="点击查看完整列表">+' +
+          (d.sans.length - 1) + ' SAN</button>';
+      }
+      var caName = d.issuer_org || d.issuer || '—';
+      certBlock = '<div class="card-cert"><div class="cert-info">' +
+        '<div class="cert-line cert-line-main">' +
+          '<span class="cert-cn" title="' + escapeHTML(d.subject) + '">' + escapeHTML(d.subject) + '</span>' +
+          (d.is_wildcard ? '<span class="cert-tag">泛域名</span>' : '') +
+          sansExtra +
+        '</div>' +
+        '<div class="cert-line cert-line-meta">' +
+          '<span class="cert-label">序列号:</span>' +
+          '<span class="cert-val cert-serial" title="' + escapeHTML(d.serial_number) + '">' + escapeHTML(d.serial_number) + '</span>' +
+        '</div>' +
+        '<div class="cert-line cert-line-meta">' +
+          '<span class="cert-label">签发CA:</span>' +
+          '<span class="cert-val cert-ca" title="' + escapeHTML(caName) + '">' + escapeHTML(caName) + '</span>' +
+        '</div>' +
+      '</div></div>';
+    }
+
+    // 日期网格：到期 / 检测
+    var dates = '<div class="card-dates">' +
+      '<div class="card-date-item">' +
+        '<div class="card-date-label">到期</div>' +
+        (d.not_after && !d.last_error
+          ? '<span class="card-date-value">' + fmtDate(d.not_after) + '</span>' + daysBadge(d.days_remaining)
+          : '<span class="card-date-sub">—</span>') +
+      '</div>' +
+      '<div class="card-date-item">' +
+        '<div class="card-date-label">检测</div>' +
+        (d.last_checked
+          ? '<span class="card-date-value">' + fmtRelative(d.last_checked) + '</span>' +
+            '<span class="card-date-sub">' + fmtDate(d.last_checked) + '</span>'
+          : '<span class="card-date-sub">从未</span>') +
+      '</div>' +
+    '</div>';
+
+    // 备注
+    var notesBlock = d.notes
+      ? '<div class="card-notes">' + escapeHTML(d.notes) + '</div>'
+      : '';
+
+    return '<div class="card-item" data-id="' + d.id + '">' +
+      head + errBox + certBlock + dates + notesBlock +
+    '</div>';
   }
 
   // ===== 事件 =====
@@ -286,8 +374,8 @@
     render();
   });
 
-  // 表格内操作（事件委托）
-  $body.addEventListener('click', function (e) {
+  // 表格 + 卡片双视图共用事件委托
+  function onItemClicked(e) {
     var sanBtn = e.target.closest('.san-trigger');
     if (sanBtn) {
       var sid = parseInt(sanBtn.getAttribute('data-san-id'), 10);
@@ -301,7 +389,9 @@
     if (action === 'check') doCheck(id, btn);
     else if (action === 'edit') openEdit(id);
     else if (action === 'delete') openDelete(id);
-  });
+  }
+  $body.addEventListener('click', onItemClicked);
+  $cardList.addEventListener('click', onItemClicked);
 
   // SAN 列表弹窗
   var $sanListTitle = document.getElementById('sanListTitle');
