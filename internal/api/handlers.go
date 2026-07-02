@@ -215,6 +215,48 @@ func (s *Server) handleCheckAll(c *gin.Context) {
 	ok(c, gin.H{"triggered": true})
 }
 
+// ---------------- tags ----------------
+
+func (s *Server) handleListTags(c *gin.Context) {
+	tags, err := s.st.ListTags()
+	if err != nil {
+		fail(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	ok(c, tags)
+}
+
+func (s *Server) handleCreateTag(c *gin.Context) {
+	var req struct {
+		Name string `json:"name"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.Name) == "" {
+		fail(c, http.StatusBadRequest, "标签名不能为空")
+		return
+	}
+	name := strings.TrimSpace(req.Name)
+	t, err := s.st.CreateTag(name)
+	if err != nil {
+		// 唯一约束冲突等
+		fail(c, http.StatusConflict, "标签已存在或创建失败: "+err.Error())
+		return
+	}
+	ok(c, t)
+}
+
+func (s *Server) handleDeleteTag(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		fail(c, http.StatusBadRequest, "无效的 id")
+		return
+	}
+	if err := s.st.DeleteTag(id); err != nil {
+		fail(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	ok(c, nil)
+}
+
 // ---------------- settings ----------------
 
 func (s *Server) handleGetSettings(c *gin.Context) {

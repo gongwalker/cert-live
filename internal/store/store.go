@@ -225,6 +225,39 @@ func (s *Store) SetSetting(key, value string) error {
 	return err
 }
 
+// ---------------- tags ----------------
+
+func (s *Store) ListTags() ([]model.Tag, error) {
+	rows, err := s.db.Query(`SELECT id, name FROM tags ORDER BY created_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]model.Tag, 0)
+	for rows.Next() {
+		var t model.Tag
+		if err := rows.Scan(&t.ID, &t.Name); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) CreateTag(name string) (model.Tag, error) {
+	res, err := s.db.Exec(`INSERT INTO tags(name, created_at) VALUES(?,?)`, name, nowUnix())
+	if err != nil {
+		return model.Tag{}, err
+	}
+	id, _ := res.LastInsertId()
+	return model.Tag{ID: id, Name: name}, nil
+}
+
+func (s *Store) DeleteTag(id int64) error {
+	_, err := s.db.Exec(`DELETE FROM tags WHERE id=?`, id)
+	return err
+}
+
 // ---------------- backup / restore ----------------
 
 // Backup 通过 VACUUM INTO 拿到一致快照

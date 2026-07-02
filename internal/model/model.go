@@ -8,6 +8,12 @@ type User struct {
 	PasswordHash string `json:"-"`
 }
 
+// Tag 标签（独立实体，目前不与 domains 关联，后续可扩展）
+type Tag struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
 // Domain 一条域名 = 一行；包含用户编辑字段和最近一次探测结果
 type Domain struct {
 	ID        int64  `json:"id"`

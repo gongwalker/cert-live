@@ -15,6 +15,9 @@
       <span class="topbar-title">CertLive 证活</span>
     </div>
     <div class="topbar-right">
+      <button type="button" class="topbar-icon-btn" data-modal-open="settingsModal" title="设置">
+        <i class="fas fa-cog"></i>
+      </button>
       <a href="/logout" class="topbar-logout" data-modal-open="logoutModal"><i class="fas fa-right-from-bracket"></i>退出</a>
     </div>
   </header>
@@ -147,6 +150,28 @@
       </div>
       <div class="dlg-actions">
         <button type="button" class="btn-solid" data-modal-close>关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 设置弹窗：标签管理 -->
+  <div class="modal-overlay" id="settingsModal" aria-hidden="true">
+    <div class="modal-card dlg dlg-settings">
+      <div class="dlg-head">
+        <h3>设置</h3>
+        <p>管理标签，用于后续给域名分类</p>
+      </div>
+      <div class="dlg-body">
+        <div class="tag-add">
+          <input type="text" id="tagInput" placeholder="输入标签名，回车或点添加" maxlength="20">
+          <button type="button" class="btn-solid" id="tagAddBtn"><i class="fas fa-plus"></i>添加</button>
+        </div>
+        <div class="tag-list" id="tagList">
+          <div class="tag-empty">加载中...</div>
+        </div>
+      </div>
+      <div class="dlg-actions">
+        <button type="button" class="btn-ghost" data-modal-close>关闭</button>
       </div>
     </div>
   </div>

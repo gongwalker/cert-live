@@ -38,6 +38,10 @@ func (s *Server) routes() http.Handler {
 		api.POST("/domains/:id/check", s.handleCheckDomain)
 		api.POST("/domains/check-all", s.handleCheckAll)
 
+		api.GET("/tags", s.handleListTags)
+		api.POST("/tags", s.handleCreateTag)
+		api.DELETE("/tags/:id", s.handleDeleteTag)
+
 		api.GET("/settings", s.handleGetSettings)
 		api.PUT("/settings", s.handleUpdateSettings)
 

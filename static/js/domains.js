@@ -516,6 +516,74 @@
     });
   }
 
+  // ===== 标签管理 =====
+  var $tagInput = document.getElementById('tagInput');
+  var $tagAddBtn = document.getElementById('tagAddBtn');
+  var $tagList = document.getElementById('tagList');
+
+  function loadTags() {
+    return api('GET', '/api/tags').then(function (tags) {
+      renderTags(tags || []);
+    }).catch(function (err) {
+      $tagList.innerHTML = '<div class="tag-empty">加载失败：' + escapeHTML(err.message) + '</div>';
+    });
+  }
+
+  function renderTags(tags) {
+    if (!tags.length) {
+      $tagList.innerHTML = '<div class="tag-empty">暂无标签，添加第一个吧</div>';
+      return;
+    }
+    $tagList.innerHTML = tags.map(function (t) {
+      return '<div class="tag-item">' +
+        '<span class="tag-name">' + escapeHTML(t.name) + '</span>' +
+        '<button type="button" class="tag-delete" data-tag-id="' + t.id + '" title="删除"><i class="fas fa-times"></i></button>' +
+      '</div>';
+    }).join('');
+  }
+
+  function addTag() {
+    var name = $tagInput.value.trim();
+    if (!name) {
+      toast('请输入标签名', 'error');
+      $tagInput.focus();
+      return;
+    }
+    api('POST', '/api/tags', { name: name }).then(function () {
+      $tagInput.value = '';
+      toast('已添加', 'success');
+      loadTags();
+    }).catch(function (err) {
+      toast('添加失败：' + err.message, 'error');
+    });
+  }
+
+  $tagAddBtn.addEventListener('click', addTag);
+  $tagInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); addTag(); }
+  });
+
+  // 删除标签（事件委托）
+  $tagList.addEventListener('click', function (e) {
+    var btn = e.target.closest('.tag-delete');
+    if (!btn) return;
+    var id = parseInt(btn.getAttribute('data-tag-id'), 10);
+    api('DELETE', '/api/tags/' + id).then(function () {
+      toast('已删除', 'success');
+      loadTags();
+    }).catch(function (err) {
+      toast('删除失败：' + err.message, 'error');
+    });
+  });
+
+  // 打开设置弹窗时加载标签
+  document.addEventListener('click', function (e) {
+    var opener = e.target.closest('[data-modal-open="settingsModal"]');
+    if (opener) {
+      setTimeout(loadTags, 50);
+    }
+  });
+
   // ===== 启动 =====
   loadDomains();
 
