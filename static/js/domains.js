@@ -880,60 +880,70 @@
     }).join('');
   }
 
-  // ===== 图标 / 颜色 浮层（事件委托） =====
-  // 任意点击外部时关闭浮层
-  document.addEventListener('mousedown', function (e) {
-    if (!e.target.closest('.tag-picker-pop') && !e.target.closest('[data-icon-pick]') && !e.target.closest('[data-color-pick]')) {
-      closeTagPickers();
-    }
-  });
-
-  function closeTagPickers() {
-    var pops = document.querySelectorAll('.tag-picker-pop');
-    for (var i = 0; i < pops.length; i++) pops[i].remove();
-  }
-
-  $tagList.addEventListener('click', function (e) {
+  // ===== 图标 / 颜色 浮层（事件委托，浮层挂到 body 避免 overflow 裁切）=====
+  document.addEventListener('click', function (e) {
+    // 1. 点开图标选择器
     var iconBtn = e.target.closest('[data-icon-pick]');
-    var colorBtn = e.target.closest('[data-color-pick]');
     if (iconBtn) {
       e.stopPropagation();
       closeTagPickers();
       openIconPicker(iconBtn);
       return;
     }
+    // 2. 点开颜色选择器
+    var colorBtn = e.target.closest('[data-color-pick]');
     if (colorBtn) {
       e.stopPropagation();
       closeTagPickers();
       openColorPicker(colorBtn);
       return;
     }
-    // 浮层内点击
+    // 3. 浮层内：选图标
     var iconOpt = e.target.closest('[data-set-icon]');
     if (iconOpt) {
       updateTagField(parseInt(iconOpt.getAttribute('data-tag-id'), 10), 'icon', iconOpt.getAttribute('data-set-icon'));
       closeTagPickers();
       return;
     }
+    // 4. 浮层内：选颜色
     var colorOpt = e.target.closest('[data-set-color]');
     if (colorOpt) {
       updateTagField(parseInt(colorOpt.getAttribute('data-tag-id'), 10), 'color', colorOpt.getAttribute('data-set-color'));
       closeTagPickers();
       return;
     }
+    // 5. 浮层内：清除图标
     var iconClear = e.target.closest('[data-clear-icon]');
     if (iconClear) {
       updateTagField(parseInt(iconClear.getAttribute('data-tag-id'), 10), 'icon', '');
       closeTagPickers();
       return;
     }
+    // 6. 浮层内：清除颜色
     var colorClear = e.target.closest('[data-clear-color]');
     if (colorClear) {
       updateTagField(parseInt(colorClear.getAttribute('data-tag-id'), 10), 'color', '');
       closeTagPickers();
       return;
     }
+    // 7. 点浮层外 → 关闭
+    if (!e.target.closest('.tag-picker-pop')) {
+      closeTagPickers();
+    }
   });
+
+  // ESC 也能关
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') closeTagPickers();
+  });
+  // 滚动 / 窗口尺寸变化时关闭（坐标会失效）
+  window.addEventListener('scroll', closeTagPickers, true);
+  window.addEventListener('resize', closeTagPickers);
+
+  function closeTagPickers() {
+    var pops = document.querySelectorAll('body > .tag-picker-pop');
+    for (var i = 0; i < pops.length; i++) pops[i].remove();
+  }
 
   function openIconPicker(anchor) {
     var tagID = parseInt(anchor.getAttribute('data-icon-pick'), 10);
@@ -960,14 +970,32 @@
     showTagPicker(anchor, html);
   }
 
+  // 浮层挂到 body，用 fixed 定位 + JS 算坐标，避免被父级 overflow 裁切
   function showTagPicker(anchor, innerHTML) {
     var pop = document.createElement('div');
-    pop.className = 'tag-picker-pop show';
+    pop.className = 'tag-picker-pop';
     pop.innerHTML = innerHTML;
-    // 用 anchor 父级 .tag-item 作 positioning context（position: relative 已经在 tag-item 上？没有，加一下）
-    var item = anchor.closest('.tag-item');
-    item.style.position = 'relative';
-    item.appendChild(pop);
+    document.body.appendChild(pop);
+
+    var rect = anchor.getBoundingClientRect();
+    var popRect = pop.getBoundingClientRect();
+    var margin = 6;
+
+    // 横向：默认左对齐 anchor，超出右边则右对齐
+    var left = rect.left;
+    if (left + popRect.width > window.innerWidth - 10) {
+      left = window.innerWidth - popRect.width - 10;
+    }
+    if (left < 10) left = 10;
+
+    // 纵向：优先往下；下面不够且上面够则往上
+    var top = rect.bottom + margin;
+    if (top + popRect.height > window.innerHeight - 10 && rect.top - popRect.height - margin > 10) {
+      top = rect.top - popRect.height - margin;
+    }
+
+    pop.style.left = left + 'px';
+    pop.style.top = top + 'px';
   }
 
   // 增量更新单个字段：PUT /api/tags/:id {icon|color|name: ...}

@@ -967,21 +967,17 @@ button.cert-tag:focus {
   color: var(--danger);
 }
 
-/* 图标 / 颜色 选择器浮层 */
+/* 图标 / 颜色 选择器浮层（挂到 body 避免 overflow 裁切）*/
 .tag-picker-pop {
-  position: absolute;
-  bottom: calc(100% + 6px);
-  left: 0;
-  z-index: 50;
+  position: fixed;
+  z-index: 200;
   background: #12264a;
   border: 1px solid var(--border-strong);
   border-radius: 8px;
   padding: 10px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
-  display: none;
   width: 240px;
 }
-.tag-picker-pop.show { display: block; }
 .tag-picker-pop-title {
   font-size: 11px;
   color: var(--text-muted);
