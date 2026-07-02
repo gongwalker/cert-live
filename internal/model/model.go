@@ -10,8 +10,10 @@ type User struct {
 
 // Tag 标签（独立实体，目前不与 domains 关联，后续可扩展）
 type Tag struct {
-	ID   int64  `json:"id"`
-	Name string `json:"name"`
+	ID    int64  `json:"id"`
+	Name  string `json:"name"`
+	Icon  string `json:"icon,omitempty"`  // Font Awesome 图标类名，如 "fa-server"
+	Color string `json:"color,omitempty"` // hex 色值，如 "#22C55E"
 }
 
 // Domain 一条域名 = 一行；包含用户编辑字段和最近一次探测结果

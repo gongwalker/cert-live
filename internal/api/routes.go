@@ -41,6 +41,7 @@ func (s *Server) routes() http.Handler {
 		api.GET("/tags", s.handleListTags)
 		api.POST("/tags", s.handleCreateTag)
 		api.PUT("/tags/reorder", s.handleReorderTags)
+		api.PUT("/tags/:id", s.handleUpdateTag)
 		api.DELETE("/tags/:id", s.handleDeleteTag)
 
 		api.GET("/settings", s.handleGetSettings)

@@ -168,8 +168,13 @@
   <div class="modal-overlay" id="settingsModal" aria-hidden="true">
     <div class="modal-card dlg dlg-settings">
       <div class="dlg-head">
-        <h3>设置</h3>
-        <p>管理标签，用于后续给域名分类</p>
+        <div>
+          <h3>设置</h3>
+          <p>管理标签，用于后续给域名分类</p>
+        </div>
+        <button type="button" class="dlg-close" data-modal-close aria-label="关闭" title="关闭">
+          <i class="fas fa-times"></i>
+        </button>
       </div>
       <div class="dlg-body">
         <div class="tag-add">
@@ -179,9 +184,6 @@
         <div class="tag-list" id="tagList">
           <div class="tag-empty">加载中...</div>
         </div>
-      </div>
-      <div class="dlg-actions">
-        <button type="button" class="btn-ghost" data-modal-close>关闭</button>
       </div>
     </div>
   </div>

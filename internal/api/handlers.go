@@ -266,6 +266,55 @@ func (s *Server) handleDeleteTag(c *gin.Context) {
 	ok(c, nil)
 }
 
+// 更新单个标签（name / icon / color 三选一或全改）
+func (s *Server) handleUpdateTag(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		fail(c, http.StatusBadRequest, "无效的 id")
+		return
+	}
+	var req struct {
+		Name  *string `json:"name,omitempty"`
+		Icon  *string `json:"icon,omitempty"`
+		Color *string `json:"color,omitempty"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		fail(c, http.StatusBadRequest, "请求体格式错误")
+		return
+	}
+	// 读老值，没传的字段保持不变
+	old, err := s.st.GetTagByID(id)
+	if err != nil {
+		fail(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if old == nil {
+		fail(c, http.StatusNotFound, "标签不存在")
+		return
+	}
+	name := old.Name
+	if req.Name != nil {
+		name = strings.TrimSpace(*req.Name)
+		if name == "" {
+			fail(c, http.StatusBadRequest, "标签名不能为空")
+			return
+		}
+	}
+	icon := old.Icon
+	if req.Icon != nil {
+		icon = *req.Icon
+	}
+	color := old.Color
+	if req.Color != nil {
+		color = *req.Color
+	}
+	if err := s.st.UpdateTag(id, name, icon, color); err != nil {
+		fail(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	ok(c, model.Tag{ID: id, Name: name, Icon: icon, Color: color})
+}
+
 // 重排序标签：body {tag_ids: [3,1,2,4]} → 按此顺序写 sort_order
 func (s *Server) handleReorderTags(c *gin.Context) {
 	var req struct {

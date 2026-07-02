@@ -105,6 +105,30 @@
     return '<span class="expiry-days ' + cls + '">' + text + '</span>';
   }
 
+  // hex → rgba 字符串（用于把 tag 颜色变浅做背景/边框）
+  function hexToRgba(hex, alpha) {
+    if (!hex || hex[0] !== '#' || hex.length < 7) return '';
+    var r = parseInt(hex.slice(1, 3), 16);
+    var g = parseInt(hex.slice(3, 5), 16);
+    var b = parseInt(hex.slice(5, 7), 16);
+    return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
+  }
+
+  // 渲染单个标签 chip：带颜色（无颜色时回退默认蓝，由 CSS 控制）
+  // opts: {cls: 自定义类, active: 是否高亮（高亮时强制主题蓝）, withIcon: 是否带图标}
+  function tagChip(t, opts) {
+    opts = opts || {};
+    var cls = opts.cls || 'domain-tag';
+    var iconHTML = (t.icon && opts.withIcon !== false) ? '<i class="fas ' + escapeHTML(t.icon) + '"></i>' : '';
+    var style = '';
+    if (t.color && !opts.active) {
+      // 用 tag 自身颜色：背景 15%、边框 45%、文字纯色
+      style = ' style="background:' + hexToRgba(t.color, 0.15) + ';border-color:' +
+              hexToRgba(t.color, 0.5) + ';color:' + escapeHTML(t.color) + ';"';
+    }
+    return '<span class="' + cls + '"' + style + '>' + iconHTML + escapeHTML(t.name) + '</span>';
+  }
+
   function toast(msg, type) {
     var icon = type === 'error' ? '<i class="fas fa-circle-exclamation"></i>'
              : type === 'success' ? '<i class="fas fa-circle-check"></i>'
@@ -209,7 +233,7 @@
     var portSuffix = d.port && d.port !== 443 ? ':' + d.port : '';
     var tagsHTML = (d.tags && d.tags.length)
       ? '<div class="domain-tags">' + d.tags.map(function (t) {
-          return '<span class="domain-tag">' + escapeHTML(t.name) + '</span>';
+          return tagChip(t);
         }).join('') + '</div>'
       : '';
     var host = '<td class="col-host"><div class="host-cell">' +
@@ -295,7 +319,7 @@
     // 头部：host + 状态 + 操作
     var tagsHTML = (d.tags && d.tags.length)
       ? '<div class="domain-tags">' + d.tags.map(function (t) {
-          return '<span class="domain-tag">' + escapeHTML(t.name) + '</span>';
+          return tagChip(t);
         }).join('') + '</div>'
       : '';
     var head = '<div class="card-head">' +
@@ -474,9 +498,13 @@
       return;
     }
     $tagPicker.innerHTML = allTags.map(function (t) {
-      var active = selectedTagIDs[t.id] ? ' active' : '';
-      return '<button type="button" class="tag-chip' + active + '" data-tag-id="' + t.id + '">' +
-        escapeHTML(t.name) + '</button>';
+      var isActive = !!selectedTagIDs[t.id];
+      var iconHTML = t.icon ? '<i class="fas ' + escapeHTML(t.icon) + '"></i>' : '';
+      var style = (t.color && !isActive)
+        ? ' style="background:' + hexToRgba(t.color, 0.18) + ';border-color:' + hexToRgba(t.color, 0.5) + ';color:' + escapeHTML(t.color) + ';"'
+        : '';
+      return '<button type="button" class="tag-chip' + (isActive ? ' active' : '') + '" data-tag-id="' + t.id + '"' + style + '>' +
+        iconHTML + escapeHTML(t.name) + '</button>';
     }).join('');
   }
 
@@ -514,9 +542,13 @@
     $tagFilter.hidden = false;
     var html = '<span class="tag-filter-label"><i class="fas fa-filter"></i> 标签筛选:</span>';
     html += allTags.map(function (t) {
-      var active = state.filterTagIDs[t.id] ? ' active' : '';
-      return '<button type="button" class="filter-chip' + active + '" data-filter-tag-id="' + t.id + '">' +
-        escapeHTML(t.name) + '</button>';
+      var isActive = !!state.filterTagIDs[t.id];
+      var iconHTML = t.icon ? '<i class="fas ' + escapeHTML(t.icon) + '"></i>' : '';
+      var style = (t.color && !isActive)
+        ? ' style="background:' + hexToRgba(t.color, 0.15) + ';border-color:' + hexToRgba(t.color, 0.45) + ';color:' + escapeHTML(t.color) + ';"'
+        : '';
+      return '<button type="button" class="filter-chip' + (isActive ? ' active' : '') + '" data-filter-tag-id="' + t.id + '"' + style + '>' +
+        iconHTML + escapeHTML(t.name) + '</button>';
     }).join('');
     $tagFilter.innerHTML = html;
   }
@@ -615,13 +647,29 @@
   var $tagAddBtn = document.getElementById('tagAddBtn');
   var $tagList = document.getElementById('tagList');
 
+  var currentTagsCache = [];  // 给图标/颜色浮层查找当前选中态
+
   function loadTags() {
     return api('GET', '/api/tags').then(function (tags) {
-      renderTags(tags || []);
+      currentTagsCache = tags || [];
+      renderTags(currentTagsCache);
     }).catch(function (err) {
       $tagList.innerHTML = '<div class="tag-empty">加载失败：' + escapeHTML(err.message) + '</div>';
     });
   }
+
+  // ===== 图标 / 颜色调色板 =====
+  var ICONS = [
+    'fa-globe', 'fa-server', 'fa-database', 'fa-shield-halved', 'fa-lock', 'fa-star',
+    'fa-heart', 'fa-bolt', 'fa-code', 'fa-flask', 'fa-rocket', 'fa-wrench',
+    'fa-cloud', 'fa-house', 'fa-building', 'fa-tag', 'fa-gear', 'fa-eye',
+    'fa-triangle-exclamation', 'fa-circle', 'fa-cube', 'fa-network-wired',
+    'fa-leaf', 'fa-fire'
+  ];
+  var COLORS = [
+    '#409eff', '#22C55E', '#FFD166', '#FF6B6B', '#A78BFA', '#06B6D4',
+    '#EC4899', '#94A3B8', '#FB923C', '#6366F1', '#14B8A6', '#F43F5E'
+  ];
 
   function renderTags(tags) {
     if (!tags.length) {
@@ -629,12 +677,124 @@
       return;
     }
     $tagList.innerHTML = tags.map(function (t) {
+      var iconHTML = t.icon
+        ? '<i class="fas ' + escapeHTML(t.icon) + '"></i>'
+        : '<i class="fas fa-tag" style="opacity:.3"></i>';
+      var colorStyle = t.color
+        ? 'background:' + escapeHTML(t.color) + ';'
+        : '';
+      var colorClass = 'tag-color-btn' + (t.color ? '' : ' unset');
       return '<div class="tag-item" draggable="true" data-tag-id="' + t.id + '">' +
         '<span class="tag-handle" title="拖动排序"><i class="fas fa-grip-vertical"></i></span>' +
+        '<button type="button" class="tag-icon-btn" data-icon-pick="' + t.id + '" title="设置图标">' + iconHTML + '</button>' +
+        '<button type="button" class="' + colorClass + '" data-color-pick="' + t.id + '" style="' + colorStyle + '" title="设置颜色"></button>' +
         '<span class="tag-name">' + escapeHTML(t.name) + '</span>' +
         '<button type="button" class="tag-delete" data-tag-id="' + t.id + '" title="删除"><i class="fas fa-times"></i></button>' +
       '</div>';
     }).join('');
+  }
+
+  // ===== 图标 / 颜色 浮层（事件委托） =====
+  // 任意点击外部时关闭浮层
+  document.addEventListener('mousedown', function (e) {
+    if (!e.target.closest('.tag-picker-pop') && !e.target.closest('[data-icon-pick]') && !e.target.closest('[data-color-pick]')) {
+      closeTagPickers();
+    }
+  });
+
+  function closeTagPickers() {
+    var pops = document.querySelectorAll('.tag-picker-pop');
+    for (var i = 0; i < pops.length; i++) pops[i].remove();
+  }
+
+  $tagList.addEventListener('click', function (e) {
+    var iconBtn = e.target.closest('[data-icon-pick]');
+    var colorBtn = e.target.closest('[data-color-pick]');
+    if (iconBtn) {
+      e.stopPropagation();
+      closeTagPickers();
+      openIconPicker(iconBtn);
+      return;
+    }
+    if (colorBtn) {
+      e.stopPropagation();
+      closeTagPickers();
+      openColorPicker(colorBtn);
+      return;
+    }
+    // 浮层内点击
+    var iconOpt = e.target.closest('[data-set-icon]');
+    if (iconOpt) {
+      updateTagField(parseInt(iconOpt.getAttribute('data-tag-id'), 10), 'icon', iconOpt.getAttribute('data-set-icon'));
+      closeTagPickers();
+      return;
+    }
+    var colorOpt = e.target.closest('[data-set-color]');
+    if (colorOpt) {
+      updateTagField(parseInt(colorOpt.getAttribute('data-tag-id'), 10), 'color', colorOpt.getAttribute('data-set-color'));
+      closeTagPickers();
+      return;
+    }
+    var iconClear = e.target.closest('[data-clear-icon]');
+    if (iconClear) {
+      updateTagField(parseInt(iconClear.getAttribute('data-tag-id'), 10), 'icon', '');
+      closeTagPickers();
+      return;
+    }
+    var colorClear = e.target.closest('[data-clear-color]');
+    if (colorClear) {
+      updateTagField(parseInt(colorClear.getAttribute('data-tag-id'), 10), 'color', '');
+      closeTagPickers();
+      return;
+    }
+  });
+
+  function openIconPicker(anchor) {
+    var tagID = parseInt(anchor.getAttribute('data-icon-pick'), 10);
+    var t = (currentTagsCache.find(function (x) { return x.id === tagID; }) || {});
+    var html = '<div class="tag-picker-pop-title">选择图标</div>' +
+      '<div class="icon-grid">' + ICONS.map(function (ic) {
+        var active = t.icon === ic ? ' active' : '';
+        return '<button type="button" class="icon-option' + active + '" data-set-icon="' + ic + '" data-tag-id="' + tagID + '" title="' + ic + '">' +
+          '<i class="fas ' + ic + '"></i></button>';
+      }).join('') + '</div>' +
+      '<button type="button" class="icon-clear" data-clear-icon="1" data-tag-id="' + tagID + '">清除图标</button>';
+    showTagPicker(anchor, html);
+  }
+
+  function openColorPicker(anchor) {
+    var tagID = parseInt(anchor.getAttribute('data-color-pick'), 10);
+    var t = (currentTagsCache.find(function (x) { return x.id === tagID; }) || {});
+    var html = '<div class="tag-picker-pop-title">选择颜色</div>' +
+      '<div class="color-grid">' + COLORS.map(function (co) {
+        var active = t.color === co ? ' active' : '';
+        return '<button type="button" class="color-option' + active + '" data-set-color="' + co + '" data-tag-id="' + tagID + '" style="background:' + co + '" title="' + co + '"></button>';
+      }).join('') + '</div>' +
+      '<button type="button" class="color-clear" data-clear-color="1" data-tag-id="' + tagID + '">清除颜色（用默认蓝）</button>';
+    showTagPicker(anchor, html);
+  }
+
+  function showTagPicker(anchor, innerHTML) {
+    var pop = document.createElement('div');
+    pop.className = 'tag-picker-pop show';
+    pop.innerHTML = innerHTML;
+    // 用 anchor 父级 .tag-item 作 positioning context（position: relative 已经在 tag-item 上？没有，加一下）
+    var item = anchor.closest('.tag-item');
+    item.style.position = 'relative';
+    item.appendChild(pop);
+  }
+
+  // 增量更新单个字段：PUT /api/tags/:id {icon|color|name: ...}
+  function updateTagField(tagID, field, value) {
+    var body = {};
+    body[field] = value;
+    api('PUT', '/api/tags/' + tagID, body).then(function () {
+      toast('已更新', 'success');
+      loadTags();           // 刷新设置弹窗里的列表
+      refreshAllTags();     // 同步给域名表单/筛选条
+    }).catch(function (err) {
+      toast('更新失败：' + err.message, 'error');
+    });
   }
 
   // ===== 拖拽排序（PC 端）=====

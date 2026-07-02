@@ -687,7 +687,36 @@ button.cert-tag:focus {
 }
 
 /* ===== 设置弹窗：标签管理 ===== */
-.dlg-settings { max-width: 480px; }
+.dlg-settings { max-width: 480px; position: relative; }
+
+/* 设置弹窗头部留出右上角空间给关闭按钮 */
+.dlg-settings .dlg-head {
+  padding-right: 46px;
+}
+
+/* 通用关闭按钮（绝对定位到弹窗右上角，可复用） */
+.dlg-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  transition: background .15s, color .15s;
+  z-index: 1;
+}
+.dlg-close:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
 
 .tag-add {
   display: flex;
@@ -729,9 +758,10 @@ button.cert-tag:focus {
 }
 
 .tag-item {
+  position: relative;  /* 给图标/颜色浮层做定位锚 */
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   padding: 8px 12px;
   background: rgba(64, 158, 255, 0.08);
   border: 1px solid rgba(64, 158, 255, 0.2);
@@ -757,7 +787,46 @@ button.cert-tag:focus {
 }
 .tag-handle:active { cursor: grabbing; }
 .tag-handle:hover { color: var(--accent-3); }
-.tag-name { flex: 1; font-weight: 500; }
+
+/* 图标 / 颜色 按钮（左边的两个小方块） */
+.tag-icon-btn,
+.tag-color-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 13px;
+  transition: border-color .15s, color .15s, background .15s;
+  position: relative;
+}
+.tag-icon-btn:hover,
+.tag-color-btn:hover {
+  border-color: var(--accent);
+  color: #fff;
+}
+.tag-color-btn {
+  /* 颜色块本身：背景是当前 tag 颜色 */
+  background: var(--tag-color, rgba(255, 255, 255, 0.06));
+  border-color: rgba(255, 255, 255, 0.15);
+}
+.tag-color-btn.unset { color: var(--text-muted); }
+
+.tag-name {
+  flex: 1;
+  font-weight: 500;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .tag-delete {
   display: inline-flex;
   align-items: center;
@@ -771,11 +840,97 @@ button.cert-tag:focus {
   font-size: 11px;
   border-radius: 4px;
   transition: background .15s, color .15s;
+  flex-shrink: 0;
 }
 .tag-delete:hover {
   background: rgba(255, 107, 107, 0.2);
   color: var(--danger);
 }
+
+/* 图标 / 颜色 选择器浮层 */
+.tag-picker-pop {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  z-index: 50;
+  background: #12264a;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  padding: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  display: none;
+  width: 240px;
+}
+.tag-picker-pop.show { display: block; }
+.tag-picker-pop-title {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.icon-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 4px;
+}
+.icon-option {
+  height: 32px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: var(--text-sub);
+  cursor: pointer;
+  font-size: 13px;
+  transition: all .15s;
+}
+.icon-option:hover {
+  background: rgba(64, 158, 255, 0.15);
+  color: #fff;
+}
+.icon-option.active {
+  background: rgba(64, 158, 255, 0.25);
+  border-color: var(--accent);
+  color: #fff;
+}
+.icon-clear {
+  margin-top: 8px;
+  width: 100%;
+  height: 28px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 11px;
+}
+.icon-clear:hover { color: var(--danger); border-color: var(--danger); }
+
+.color-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
+}
+.color-option {
+  height: 28px;
+  border-radius: 5px;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: border-color .15s, transform .15s;
+}
+.color-option:hover { transform: scale(1.1); }
+.color-option.active { border-color: #fff; }
+.color-clear {
+  margin-top: 8px;
+  width: 100%;
+  height: 28px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 11px;
+}
+.color-clear:hover { color: var(--danger); border-color: var(--danger); }
 
 .tag-empty {
   width: 100%;

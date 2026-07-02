@@ -48,6 +48,8 @@ func (s *Store) EnsureSchema() error {
 	}
 	// 老库迁移：补 tags.sort_order 列
 	_, _ = s.db.Exec(`ALTER TABLE tags ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0`)
+	_, _ = s.db.Exec(`ALTER TABLE tags ADD COLUMN icon TEXT`)
+	_, _ = s.db.Exec(`ALTER TABLE tags ADD COLUMN color TEXT`)
 	for k, v := range map[string]string{
 		"alert_tiers":    "[30,7,1]",
 		"check_interval": "360",
@@ -335,7 +337,7 @@ func (s *Store) SetSetting(key, value string) error {
 // ---------------- tags ----------------
 
 func (s *Store) ListTags() ([]model.Tag, error) {
-	rows, err := s.db.Query(`SELECT id, name FROM tags ORDER BY sort_order ASC, id ASC`)
+	rows, err := s.db.Query(`SELECT id, name, COALESCE(icon,''), COALESCE(color,'') FROM tags ORDER BY sort_order ASC, id ASC`)
 	if err != nil {
 		return nil, err
 	}
@@ -343,7 +345,7 @@ func (s *Store) ListTags() ([]model.Tag, error) {
 	out := make([]model.Tag, 0)
 	for rows.Next() {
 		var t model.Tag
-		if err := rows.Scan(&t.ID, &t.Name); err != nil {
+		if err := rows.Scan(&t.ID, &t.Name, &t.Icon, &t.Color); err != nil {
 			return nil, err
 		}
 		out = append(out, t)
@@ -363,9 +365,29 @@ func (s *Store) CreateTag(name string) (model.Tag, error) {
 	return model.Tag{ID: id, Name: name}, nil
 }
 
+// UpdateTag 增量更新标签字段（name / icon / color）；空串视为清空
+func (s *Store) UpdateTag(id int64, name, icon, color string) error {
+	_, err := s.db.Exec(`UPDATE tags SET name=?, icon=?, color=? WHERE id=?`,
+		name, nullableString(icon), nullableString(color), id)
+	return err
+}
+
 func (s *Store) DeleteTag(id int64) error {
 	_, err := s.db.Exec(`DELETE FROM tags WHERE id=?`, id)
 	return err
+}
+
+func (s *Store) GetTagByID(id int64) (*model.Tag, error) {
+	var t model.Tag
+	err := s.db.QueryRow(`SELECT id, name, COALESCE(icon,''), COALESCE(color,'') FROM tags WHERE id=?`, id).
+		Scan(&t.ID, &t.Name, &t.Icon, &t.Color)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
 }
 
 // ReorderTags 按 orderedIDs 顺序写入 sort_order（事务批量更新）
