@@ -94,8 +94,8 @@ func (s *Scheduler) checkOne(domainID int64, tiers []int) []notify.Alert {
 		rec := *dom
 		rec.LastChecked = now
 		rec.LastError = err.Error()
-		if e := s.st.UpsertCertRecord(rec); e != nil {
-			log.Printf("scheduler: upsert error for %s: %v", dom.Host, e)
+		if e := s.st.UpdateDomainProbe(rec); e != nil {
+			log.Printf("scheduler: update probe for %s: %v", dom.Host, e)
 		}
 		return nil
 	}
@@ -103,6 +103,7 @@ func (s *Scheduler) checkOne(domainID int64, tiers []int) []notify.Alert {
 	rec := *dom
 	rec.Subject = res.Subject
 	rec.Issuer = res.Issuer
+	rec.IssuerOrg = res.IssuerOrg
 	rec.SANs = res.SANs
 	rec.SerialNumber = res.SerialNumber
 	rec.NotBefore = res.NotBefore.Unix()
@@ -110,8 +111,8 @@ func (s *Scheduler) checkOne(domainID int64, tiers []int) []notify.Alert {
 	rec.IsWildcard = res.IsWildcard
 	rec.DaysRemaining = res.DaysRemaining
 	rec.LastChecked = now
-	if e := s.st.UpsertCertRecord(rec); e != nil {
-		log.Printf("scheduler: upsert for %s: %v", dom.Host, e)
+	if e := s.st.UpdateDomainProbe(rec); e != nil {
+		log.Printf("scheduler: update probe for %s: %v", dom.Host, e)
 		return nil
 	}
 

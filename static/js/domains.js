@@ -115,6 +115,9 @@
   }
 
   // ===== API =====
+  // 统一处理响应信封：{code, message, data}
+  // code !== 200 视为错误，抛出带 message 的 Error
+  // 401 自动跳登录
   function api(method, url, body) {
     var opts = { method: method, headers: {}, credentials: 'same-origin' };
     if (body !== undefined) {
@@ -123,8 +126,15 @@
     }
     return fetch(url, opts).then(function (r) {
       if (r.status === 401) { location.href = '/login'; throw new Error('未登录'); }
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return r.json();
+      return r.json().catch(function () { throw new Error('响应不是合法 JSON'); });
+    }).then(function (res) {
+      if (!res || typeof res.code === 'undefined') {
+        throw new Error('响应格式不正确');
+      }
+      if (res.code !== 200) {
+        throw new Error(res.message || ('错误码 ' + res.code));
+      }
+      return res.data;
     });
   }
 
@@ -191,7 +201,7 @@
       (portSuffix ? '<span class="host-meta">' + escapeHTML(portSuffix) + '</span>' : '') +
       '</div></td>';
 
-    // 证书
+    // 证书信息（主体 + 序列号 + 签发CA 整合到一格）
     var cert;
     if (d.last_error || !d.subject) {
       cert = '<td class="col-cert"><span class="cert-empty">' +
@@ -199,12 +209,25 @@
     } else {
       var sansExtra = '';
       if (d.sans && d.sans.length > 1) {
-        sansExtra = '<span class="cert-sans" title="' + escapeHTML(d.sans.join('\n')) + '">+' +
-          (d.sans.length - 1) + ' SAN</span>';
+        sansExtra = '<button type="button" class="cert-tag san-trigger" data-san-id="' + d.id + '" title="点击查看完整列表">+' +
+          (d.sans.length - 1) + ' SAN</button>';
       }
-      cert = '<td class="col-cert"><div class="cert-cell"><span class="cert-cn" title="' +
-        escapeHTML(d.subject) + '">' + escapeHTML(d.subject) + '</span>' +
-        (d.is_wildcard ? '<span class="cert-sans">泛域名</span>' : '') + sansExtra + '</div></td>';
+      var caName = d.issuer_org || d.issuer || '—';
+      cert = '<td class="col-cert"><div class="cert-info">' +
+        '<div class="cert-line cert-line-main">' +
+          '<span class="cert-cn" title="' + escapeHTML(d.subject) + '">' + escapeHTML(d.subject) + '</span>' +
+          (d.is_wildcard ? '<span class="cert-tag">泛域名</span>' : '') +
+          sansExtra +
+        '</div>' +
+        '<div class="cert-line cert-line-meta">' +
+          '<span class="cert-label">序列号:</span>' +
+          '<span class="cert-val cert-serial" title="' + escapeHTML(d.serial_number) + '">' + escapeHTML(d.serial_number) + '</span>' +
+        '</div>' +
+        '<div class="cert-line cert-line-meta">' +
+          '<span class="cert-label">签发CA:</span>' +
+          '<span class="cert-val cert-ca" title="' + escapeHTML(caName) + '">' + escapeHTML(caName) + '</span>' +
+        '</div>' +
+      '</div></td>';
     }
 
     // 到期时间
@@ -265,6 +288,12 @@
 
   // 表格内操作（事件委托）
   $body.addEventListener('click', function (e) {
+    var sanBtn = e.target.closest('.san-trigger');
+    if (sanBtn) {
+      var sid = parseInt(sanBtn.getAttribute('data-san-id'), 10);
+      openSanList(sid);
+      return;
+    }
     var btn = e.target.closest('[data-action]');
     if (!btn) return;
     var id = parseInt(btn.getAttribute('data-id'), 10);
@@ -273,6 +302,29 @@
     else if (action === 'edit') openEdit(id);
     else if (action === 'delete') openDelete(id);
   });
+
+  // SAN 列表弹窗
+  var $sanListTitle = document.getElementById('sanListTitle');
+  var $sanListSub = document.getElementById('sanListSub');
+  var $sanListBody = document.getElementById('sanListBody');
+
+  function openSanList(id) {
+    var d = state.domains.find(function (x) { return x.id === id; });
+    if (!d || !d.sans || !d.sans.length) return;
+    $sanListTitle.textContent = '证书覆盖的域名';
+    $sanListSub.textContent = d.host + ' · 共 ' + d.sans.length + ' 个域名';
+    var html = d.sans.map(function (s) {
+      var isWild = s.indexOf('*.') === 0;
+      var isPrimary = s === d.subject;
+      var cls = 'san-item' + (isWild ? ' san-wild' : '') + (isPrimary ? ' san-primary' : '');
+      var tag = isWild ? '<span class="san-tag">泛</span>'
+             : isPrimary ? '<span class="san-tag">主</span>'
+             : '<span class="san-tag">单</span>';
+      return '<div class="' + cls + '">' + tag + '<span class="san-name">' + escapeHTML(s) + '</span></div>';
+    }).join('');
+    $sanListBody.innerHTML = html;
+    Modal.open('sanListModal');
+  }
 
   // 新增按钮
   document.getElementById('addBtn').addEventListener('click', openAdd);

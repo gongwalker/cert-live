@@ -48,7 +48,7 @@
           <tr>
             <th class="col-status">状态</th>
             <th class="col-host">域名</th>
-            <th class="col-cert">证书</th>
+            <th class="col-cert">证书信息</th>
             <th class="col-expiry">到期时间</th>
             <th class="col-checked">检测时间</th>
             <th class="col-notes">说明</th>
@@ -133,6 +133,22 @@
       <div class="modal-actions">
         <button class="modal-btn modal-cancel" type="button" data-modal-close>取消</button>
         <a href="/logout" class="modal-btn modal-confirm"><i class="fas fa-check"></i>确认退出</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- SAN 列表弹窗 -->
+  <div class="modal-overlay" id="sanListModal" aria-hidden="true">
+    <div class="modal-card dlg dlg-san">
+      <div class="dlg-head">
+        <h3 id="sanListTitle">证书覆盖的域名</h3>
+        <p id="sanListSub">--</p>
+      </div>
+      <div class="dlg-body">
+        <div class="san-list" id="sanListBody"></div>
+      </div>
+      <div class="dlg-actions">
+        <button type="button" class="btn-solid" data-modal-close>关闭</button>
       </div>
     </div>
   </div>

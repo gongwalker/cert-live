@@ -199,13 +199,13 @@ body {
 .domains-table tbody tr:hover { background: var(--row-hover); }
 
 /* 列宽分配：固定列用 px，可变列用 %（table-layout: fixed 下严格遵守） */
-.col-status { width: 90px; }
-.col-host   { width: 26%; }
-.col-cert   { width: 22%; }
-.col-expiry { width: 212px; }
-.col-checked{ width: 176px; }
-.col-notes  { width: 18%; }
-.col-actions{ width: 132px; text-align: right; }
+.col-status { width: 80px; }    /* 徽章 */
+.col-host   { width: 15%; }     /* 域名 + 端口/分组副行 */
+.col-cert   { width: 28%; }     /* 证书信息三行 */
+.col-expiry { width: 196px; }   /* 时间戳 + 剩 N 天 */
+.col-checked{ width: 168px; }   /* 相对 + 绝对时间双行 */
+.col-notes  { width: 22%; }     /* 说明，给充足空间 */
+.col-actions{ width: 80px; text-align: left; } /* 3 个 30px 图标按钮 + 间距 */
 
 /* 状态徽章 */
 .badge {
@@ -248,28 +248,72 @@ body {
   white-space: nowrap;
 }
 
-/* 证书 */
-.cert-cell { display: flex; align-items: center; gap: 0; min-width: 0; }
+/* 证书信息（多行整合） */
+.cert-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.cert-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  line-height: 1.5;
+}
+.cert-line-main { font-weight: 500; }
+.cert-line-meta { font-size: 11px; color: var(--text-muted); }
+
 .cert-cn {
-  color: var(--text-sub);
+  color: var(--text-main);
   font-weight: 500;
+  font-size: 13px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   flex: 0 1 auto;
   min-width: 0;
 }
-.cert-sans {
-  display: inline-block;
+.cert-tag {
   flex: 0 0 auto;
-  margin-left: 6px;
+  margin-left: 2px;
   padding: 1px 6px;
   background: rgba(64, 158, 255, 0.12);
   color: var(--accent-3);
+  border: 1px solid transparent;
   border-radius: 4px;
   font-size: 11px;
+  font-family: inherit;
   cursor: help;
 }
+button.cert-tag { cursor: pointer; transition: background .15s, border-color .15s, color .15s; }
+button.cert-tag:hover,
+button.cert-tag:focus {
+  background: rgba(64, 158, 255, 0.25);
+  border-color: rgba(64, 158, 255, 0.4);
+  color: #fff;
+  outline: none;
+}
+
+.cert-label {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+}
+.cert-val {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cert-serial {
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+  letter-spacing: .3px;
+  color: var(--text-sub);
+}
+.cert-ca { color: var(--text-sub); }
+
 .cert-empty { color: var(--text-muted); font-style: italic; }
 
 /* 到期时间 */
@@ -309,9 +353,9 @@ body {
   color: var(--text-sub);
   cursor: pointer;
   font-size: 12px;
-  margin-left: 4px;
   transition: all .2s;
 }
+.action-btn + .action-btn { margin-left: 4px; }
 .action-btn:hover { border-color: var(--accent); color: #fff; background: rgba(64, 158, 255, 0.12); }
 .action-btn.danger:hover { border-color: var(--danger); color: var(--danger); background: rgba(255, 107, 107, 0.1); }
 .action-btn.checking { color: var(--accent-3); border-color: var(--accent); animation: pulse 1s infinite; }
@@ -339,7 +383,7 @@ body {
   text-align: center;
   color: var(--text-muted);
 }
-.empty-state i { font-size: 36px; margin-bottom: 12px; opacity: .5; }
+.empty-state > i { font-size: 36px; margin-bottom: 12px; opacity: .5; }
 .empty-state p { margin-bottom: 16px; font-size: 13px; }
 
 /* 分页 */
@@ -489,6 +533,65 @@ body {
 .btn-solid:disabled {
   opacity: .6;
   cursor: not-allowed;
+}
+
+/* ===== SAN 列表弹窗 ===== */
+.dlg-san { max-width: 480px; }
+.san-list {
+  max-height: 360px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 2px 4px 0;
+}
+.san-list::-webkit-scrollbar { width: 6px; }
+.san-list::-webkit-scrollbar-thumb {
+  background: rgba(64, 158, 255, 0.2);
+  border-radius: 3px;
+}
+.san-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(64, 158, 255, 0.08);
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--text-sub);
+  transition: background .15s;
+}
+.san-item:hover { background: rgba(64, 158, 255, 0.06); }
+.san-item.san-primary {
+  color: #fff;
+  background: rgba(64, 158, 255, 0.1);
+  border-color: rgba(64, 158, 255, 0.25);
+}
+.san-name {
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 12px;
+  flex: 1;
+  word-break: break-all;
+}
+.san-tag {
+  flex-shrink: 0;
+  min-width: 22px;
+  text-align: center;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 500;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #7a8fb3;
+}
+.san-primary .san-tag {
+  background: var(--accent);
+  color: #fff;
+}
+.san-wild .san-tag {
+  background: rgba(255, 209, 102, 0.15);
+  color: #FFD166;
 }
 
 /* ===== Toast ===== */

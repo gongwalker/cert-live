@@ -16,6 +16,17 @@ import (
 	"cert-live/internal/model"
 )
 
+// 统一响应信封：{ code, message, data }
+// 成功：code=200，data 承载实际数据
+// 失败：code=HTTP 状态码（400/401/404/500...），data=null
+func ok(c *gin.Context, data any) {
+	c.JSON(http.StatusOK, gin.H{"code": 200, "message": "ok", "data": data})
+}
+
+func fail(c *gin.Context, code int, msg string) {
+	c.JSON(code, gin.H{"code": code, "message": msg, "data": nil})
+}
+
 // ---------------- 页面 ----------------
 
 // LoginPage 渲染登录页（已登录则跳转首页）
@@ -47,14 +58,10 @@ func (s *Server) DomainsPage(c *gin.Context) {
 func (s *Server) Captcha(c *gin.Context) {
 	id, b64, err := captcha.Generate()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "msg": "验证码生成失败"})
+		fail(c, http.StatusInternalServerError, "验证码生成失败")
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{
-		"code": 0,
-		"msg":  "ok",
-		"data": gin.H{"id": id, "img": b64},
-	})
+	ok(c, gin.H{"id": id, "img": b64})
 }
 
 // LoginSubmit 处理登录表单提交：校验验证码 → 校验账号密码 → 下发 cookie
@@ -62,7 +69,7 @@ func (s *Server) LoginSubmit(c *gin.Context) {
 	captchaID := c.PostForm("captchaId")
 	captchaCode := c.PostForm("captcha")
 	if !captcha.Verify(captchaID, captchaCode) {
-		c.JSON(http.StatusOK, gin.H{"code": 1, "msg": "验证码错误或已过期"})
+		fail(c, http.StatusBadRequest, "验证码错误或已过期")
 		return
 	}
 
@@ -70,15 +77,15 @@ func (s *Server) LoginSubmit(c *gin.Context) {
 	pass := c.PostForm("password")
 	u, err := s.st.GetUserByUsername(user)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "msg": "数据库错误"})
+		fail(c, http.StatusInternalServerError, "数据库错误")
 		return
 	}
 	if u == nil || auth.CheckPassword(u.PasswordHash, pass) != nil {
-		c.JSON(http.StatusOK, gin.H{"code": 1, "msg": "用户名或密码错误"})
+		fail(c, http.StatusUnauthorized, "用户名或密码错误")
 		return
 	}
 	auth.SetLogin(c, u.Username)
-	c.JSON(http.StatusOK, gin.H{"code": 0, "msg": "ok"})
+	ok(c, gin.H{"username": u.Username})
 }
 
 // Logout 清除登录态
@@ -88,27 +95,25 @@ func (s *Server) Logout(c *gin.Context) {
 }
 
 func (s *Server) handleMe(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"username": auth.CurrentUser(c)})
+	ok(c, gin.H{"username": auth.CurrentUser(c)})
 }
 
 // ---------------- domains ----------------
 
 func (s *Server) handleListDomains(c *gin.Context) {
 	search := c.Query("search")
-	groupID, _ := strconv.ParseInt(c.Query("group_id"), 10, 64)
-	domains, err := s.st.ListDomains(search, groupID)
+	domains, err := s.st.ListDomains(search)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		fail(c, http.StatusInternalServerError, err.Error())
 		return
 	}
-	c.JSON(http.StatusOK, domains)
+	ok(c, domains)
 }
 
 type domainReq struct {
-	Host    string `json:"host"`
-	Port    int    `json:"port"`
-	GroupID *int64 `json:"group_id"`
-	Notes   string `json:"notes"`
+	Host  string `json:"host"`
+	Port  int    `json:"port"`
+	Notes string `json:"notes"`
 }
 
 // normalizeHost 去掉 scheme / path / 查询串，仅保留 host[:port]
@@ -134,124 +139,87 @@ func normalizeHost(s string) string {
 func (s *Server) handleCreateDomain(c *gin.Context) {
 	var req domainReq
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
+		fail(c, http.StatusBadRequest, "请求体格式错误")
 		return
 	}
 	req.Host = normalizeHost(req.Host)
 	if req.Host == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "host 不能为空"})
+		fail(c, http.StatusBadRequest, "host 不能为空")
 		return
 	}
 	if req.Port == 0 {
 		req.Port = 443
 	}
-	d, err := s.st.CreateDomain(req.Host, req.Port, req.GroupID, req.Notes)
+	d, err := s.st.CreateDomain(req.Host, req.Port, req.Notes)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		fail(c, http.StatusInternalServerError, err.Error())
 		return
 	}
-	c.JSON(http.StatusOK, d)
+	ok(c, d)
 }
 
 func (s *Server) handleUpdateDomain(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "bad id"})
+		fail(c, http.StatusBadRequest, "无效的 id")
 		return
 	}
 	var req domainReq
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
+		fail(c, http.StatusBadRequest, "请求体格式错误")
 		return
 	}
 	req.Host = normalizeHost(req.Host)
 	if req.Host == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "host 不能为空"})
+		fail(c, http.StatusBadRequest, "host 不能为空")
 		return
 	}
 	if req.Port == 0 {
 		req.Port = 443
 	}
-	if err := s.st.UpdateDomain(id, req.Host, req.Port, req.GroupID, req.Notes); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	if err := s.st.UpdateDomain(id, req.Host, req.Port, req.Notes); err != nil {
+		fail(c, http.StatusInternalServerError, err.Error())
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"ok": true})
+	// 返回更新后的资源
+	if d, err := s.st.GetDomain(id); err == nil {
+		ok(c, d)
+	} else {
+		ok(c, gin.H{"id": id})
+	}
 }
 
 func (s *Server) handleDeleteDomain(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "bad id"})
+		fail(c, http.StatusBadRequest, "无效的 id")
 		return
 	}
 	if err := s.st.DeleteDomain(id); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		fail(c, http.StatusInternalServerError, err.Error())
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"ok": true})
+	ok(c, nil)
 }
 
 func (s *Server) handleCheckDomain(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "bad id"})
+		fail(c, http.StatusBadRequest, "无效的 id")
 		return
 	}
 	s.scheduler.CheckOne(id)
 	d, err := s.st.GetDomain(id)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		fail(c, http.StatusInternalServerError, err.Error())
 		return
 	}
-	c.JSON(http.StatusOK, d)
+	ok(c, d)
 }
 
 func (s *Server) handleCheckAll(c *gin.Context) {
 	go s.scheduler.CheckAll()
-	c.JSON(http.StatusOK, gin.H{"ok": true, "message": "后台巡检已触发"})
-}
-
-// ---------------- groups ----------------
-
-func (s *Server) handleListGroups(c *gin.Context) {
-	groups, err := s.st.ListGroups()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, groups)
-}
-
-type groupReq struct {
-	Name string `json:"name"`
-}
-
-func (s *Server) handleCreateGroup(c *gin.Context) {
-	var req groupReq
-	if err := c.ShouldBindJSON(&req); err != nil || req.Name == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "name 不能为空"})
-		return
-	}
-	g, err := s.st.CreateGroup(req.Name)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, g)
-}
-
-func (s *Server) handleDeleteGroup(c *gin.Context) {
-	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "bad id"})
-		return
-	}
-	if err := s.st.DeleteGroup(id); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"ok": true})
+	ok(c, gin.H{"triggered": true})
 }
 
 // ---------------- settings ----------------
@@ -259,7 +227,7 @@ func (s *Server) handleDeleteGroup(c *gin.Context) {
 func (s *Server) handleGetSettings(c *gin.Context) {
 	m, err := s.st.GetAll()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		fail(c, http.StatusInternalServerError, err.Error())
 		return
 	}
 	def := model.DefaultSettings()
@@ -276,7 +244,7 @@ func (s *Server) handleGetSettings(c *gin.Context) {
 	if v, ok := m["check_interval"]; ok && v != "" {
 		out["check_interval"] = v
 	}
-	c.JSON(http.StatusOK, out)
+	ok(c, out)
 }
 
 func (s *Server) handleUpdateSettings(c *gin.Context) {
@@ -288,7 +256,7 @@ func (s *Server) handleUpdateSettings(c *gin.Context) {
 		CheckInterval any    `json:"check_interval"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
+		fail(c, http.StatusBadRequest, "请求体格式错误")
 		return
 	}
 	setting := map[string]string{
@@ -314,11 +282,11 @@ func (s *Server) handleUpdateSettings(c *gin.Context) {
 	}
 	for k, v := range setting {
 		if err := s.st.SetSetting(k, v); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			fail(c, http.StatusInternalServerError, err.Error())
 			return
 		}
 	}
-	c.JSON(http.StatusOK, gin.H{"ok": true})
+	ok(c, nil)
 }
 
 // ---------------- backup / restore ----------------
@@ -326,7 +294,7 @@ func (s *Server) handleUpdateSettings(c *gin.Context) {
 func (s *Server) handleBackup(c *gin.Context) {
 	data, err := s.st.Backup()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		fail(c, http.StatusInternalServerError, err.Error())
 		return
 	}
 	name := fmt.Sprintf("certlive-backup-%s.db", time.Now().Format("20060102-150405"))
@@ -337,29 +305,29 @@ func (s *Server) handleBackup(c *gin.Context) {
 func (s *Server) handleRestore(c *gin.Context) {
 	file, err := c.FormFile("file")
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "未上传文件"})
+		fail(c, http.StatusBadRequest, "未上传文件")
 		return
 	}
 	src, err := file.Open()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		fail(c, http.StatusInternalServerError, err.Error())
 		return
 	}
 	defer src.Close()
 	buf, err := io.ReadAll(src)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		fail(c, http.StatusInternalServerError, err.Error())
 		return
 	}
 	if err := s.st.ReplaceDB(buf); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		fail(c, http.StatusInternalServerError, err.Error())
 		return
 	}
 	if err := s.st.EnsureSchema(); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		fail(c, http.StatusInternalServerError, err.Error())
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"ok": true, "message": "恢复成功"})
+	ok(c, gin.H{"restored": true})
 }
 
 func jsonCompact(v any) string {

@@ -86,7 +86,9 @@ func RequireAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if CurrentUser(c) == "" {
 			if strings.HasPrefix(c.Request.URL.Path, "/api/") {
-				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"code": 401, "msg": "未登录"})
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+					"code": 401, "message": "未登录", "data": nil,
+				})
 				return
 			}
 			c.Redirect(http.StatusFound, "/login")

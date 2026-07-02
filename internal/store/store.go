@@ -35,22 +35,19 @@ func Open(path string) (*Store, error) {
 	if err := db.Ping(); err != nil {
 		return nil, err
 	}
-	db.SetMaxOpenConns(1) // sqlite single-writer; keeps things simple & safe
+	db.SetMaxOpenConns(1) // sqlite single-writer
 	return &Store{db: db, path: path}, nil
 }
 
-func (s *Store) Close() error {
-	return s.db.Close()
-}
+func (s *Store) Close() error { return s.db.Close() }
 
 func (s *Store) EnsureSchema() error {
 	_, err := s.db.Exec(schema)
 	if err != nil {
 		return err
 	}
-	// seed default settings if missing.
 	for k, v := range map[string]string{
-		"alert_tiers":   "[30,7,1]",
+		"alert_tiers":    "[30,7,1]",
 		"check_interval": "360",
 	} {
 		_, _ = s.db.Exec(`INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)`, k, v)
@@ -88,49 +85,15 @@ func (s *Store) GetUserByUsername(username string) (*model.User, error) {
 	return u, nil
 }
 
-// ---------------- groups ----------------
-
-func (s *Store) ListGroups() ([]model.Group, error) {
-	rows, err := s.db.Query(`SELECT id, name FROM domain_groups ORDER BY name`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []model.Group
-	for rows.Next() {
-		var g model.Group
-		if err := rows.Scan(&g.ID, &g.Name); err != nil {
-			return nil, err
-		}
-		out = append(out, g)
-	}
-	return out, rows.Err()
-}
-
-func (s *Store) CreateGroup(name string) (model.Group, error) {
-	res, err := s.db.Exec(`INSERT INTO domain_groups(name, created_at) VALUES(?,?)`, name, nowUnix())
-	if err != nil {
-		return model.Group{}, err
-	}
-	id, _ := res.LastInsertId()
-	return model.Group{ID: id, Name: name}, nil
-}
-
-func (s *Store) DeleteGroup(id int64) error {
-	_, err := s.db.Exec(`DELETE FROM domain_groups WHERE id=?`, id)
-	return err
-}
-
 // ---------------- domains ----------------
 
-func (s *Store) ListDomains(search string, groupID int64) ([]model.Domain, error) {
-	search = "%" + search + "%"
-	rows, err := s.db.Query(domainListQuery, search, search, search, groupID, groupID)
+func (s *Store) ListDomains(search string) ([]model.Domain, error) {
+	rows, err := s.db.Query(domainListQuery, "%"+search+"%", "%"+search+"%", "%"+search+"%")
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []model.Domain
+	out := make([]model.Domain, 0)
 	for rows.Next() {
 		d, err := scanDomain(rows)
 		if err != nil {
@@ -142,8 +105,7 @@ func (s *Store) ListDomains(search string, groupID int64) ([]model.Domain, error
 }
 
 func (s *Store) GetDomain(id int64) (*model.Domain, error) {
-	row := s.db.QueryRow(domainGetQuery, id)
-	d, err := scanDomain(row)
+	d, err := scanDomain(s.db.QueryRow(domainGetQuery, id))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -153,19 +115,20 @@ func (s *Store) GetDomain(id int64) (*model.Domain, error) {
 	return &d, nil
 }
 
-func (s *Store) CreateDomain(host string, port int, groupID *int64, notes string) (model.Domain, error) {
-	res, err := s.db.Exec(`INSERT INTO domains(host, port, group_id, notes, created_at) VALUES(?,?,?,?,?)`,
-		host, port, nullableInt(groupID), notes, nowUnix())
+func (s *Store) CreateDomain(host string, port int, notes string) (model.Domain, error) {
+	res, err := s.db.Exec(`INSERT INTO domains(host, port, notes, created_at) VALUES(?,?,?,?)`,
+		host, port, nullableString(notes), nowUnix())
 	if err != nil {
 		return model.Domain{}, err
 	}
 	id, _ := res.LastInsertId()
-	return model.Domain{ID: id, Host: host, Port: port, GroupID: groupID, Notes: notes, CreatedAt: nowUnix()}, nil
+	return model.Domain{ID: id, Host: host, Port: port, Notes: notes, CreatedAt: nowUnix()}, nil
 }
 
-func (s *Store) UpdateDomain(id int64, host string, port int, groupID *int64, notes string) error {
-	_, err := s.db.Exec(`UPDATE domains SET host=?, port=?, group_id=?, notes=? WHERE id=?`,
-		host, port, nullableInt(groupID), notes, id)
+// UpdateDomain 更新用户可编辑字段（host/port/notes），不触碰探测结果
+func (s *Store) UpdateDomain(id int64, host string, port int, notes string) error {
+	_, err := s.db.Exec(`UPDATE domains SET host=?, port=?, notes=? WHERE id=?`,
+		host, port, nullableString(notes), id)
 	return err
 }
 
@@ -180,7 +143,7 @@ func (s *Store) ListAllDomainIDs() ([]int64, error) {
 		return nil, err
 	}
 	defer rows.Close()
-	var ids []int64
+	ids := make([]int64, 0)
 	for rows.Next() {
 		var id int64
 		if err := rows.Scan(&id); err != nil {
@@ -191,25 +154,23 @@ func (s *Store) ListAllDomainIDs() ([]int64, error) {
 	return ids, rows.Err()
 }
 
-// ---------------- cert records ----------------
-
-func (s *Store) UpsertCertRecord(rec model.Domain) error {
+// UpdateDomainProbe 写入一次 TLS 探测的结果（仅探测字段，不动用户字段）
+func (s *Store) UpdateDomainProbe(rec model.Domain) error {
 	sans, _ := json.Marshal(rec.SANs)
-	_, err := s.db.Exec(`INSERT INTO cert_records(domain_id, subject, issuer, sans, serial_number, not_before, not_after, is_wildcard, days_remaining, last_checked, last_error)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?)
-		ON CONFLICT(domain_id) DO UPDATE SET
-		  subject=excluded.subject, issuer=excluded.issuer, sans=excluded.sans,
-		  serial_number=excluded.serial_number, not_before=excluded.not_before,
-		  not_after=excluded.not_after, is_wildcard=excluded.is_wildcard,
-		  days_remaining=excluded.days_remaining, last_checked=excluded.last_checked,
-		  last_error=excluded.last_error`,
-		rec.ID, rec.Subject, rec.Issuer, string(sans), rec.SerialNumber,
-		nullableInt64(rec.NotBefore), nullableInt64(rec.NotAfter), boolToInt(rec.IsWildcard),
-		rec.DaysRemaining, rec.LastChecked, nullableString(rec.LastError))
+	_, err := s.db.Exec(`UPDATE domains SET
+		subject=?, issuer=?, issuer_org=?, sans=?, serial_number=?,
+		not_before=?, not_after=?, is_wildcard=?, days_remaining=?,
+		last_checked=?, last_error=?
+		WHERE id=?`,
+		nullableString(rec.Subject), nullableString(rec.Issuer), nullableString(rec.IssuerOrg),
+		string(sans), nullableString(rec.SerialNumber),
+		nullableInt64(rec.NotBefore), nullableInt64(rec.NotAfter),
+		boolToInt(rec.IsWildcard), rec.DaysRemaining,
+		rec.LastChecked, nullableString(rec.LastError),
+		rec.ID)
 	if err != nil {
 		return err
 	}
-	// If the live cert changed (new serial), drop stale alert history for this domain.
 	s.purgeStaleAlerts(rec.ID, rec.SerialNumber, rec.LastError != "")
 	return nil
 }
@@ -234,7 +195,7 @@ func (s *Store) RecordAlert(domainID int64, serial string, tier int) error {
 
 func (s *Store) purgeStaleAlerts(domainID int64, currentSerial string, hasError bool) {
 	if hasError {
-		return // unreachable domain: leave prior alerts so we don't re-noise when it comes back at same cert
+		return // 不可达域名：保留旧告警，避免它恢复时同张证书再次噪声
 	}
 	_, _ = s.db.Exec(`DELETE FROM alert_log WHERE domain_id=? AND cert_serial<>?`, domainID, currentSerial)
 }
@@ -266,7 +227,7 @@ func (s *Store) SetSetting(key, value string) error {
 
 // ---------------- backup / restore ----------------
 
-// Backup writes a consistent snapshot via VACUUM INTO and returns its bytes.
+// Backup 通过 VACUUM INTO 拿到一致快照
 func (s *Store) Backup() ([]byte, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -279,8 +240,7 @@ func (s *Store) Backup() ([]byte, error) {
 	return os.ReadFile(tmp)
 }
 
-// ReplaceDB closes the connection, swaps the database file with the provided
-// snapshot bytes, then reopens. Callers must call EnsureSchema afterwards.
+// ReplaceDB 关闭连接、替换 .db 文件、再开。调用方需再调 EnsureSchema。
 func (s *Store) ReplaceDB(data []byte) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

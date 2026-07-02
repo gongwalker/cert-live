@@ -12,7 +12,7 @@
     fetch('/api/captcha', { credentials: 'same-origin' })
       .then(function (r) { return r.json(); })
       .then(function (res) {
-        if (res.code === 0) {
+        if (res.code === 200) {
           captchaId = res.data.id;
           captchaImg.src = res.data.img;
         }
@@ -51,10 +51,10 @@
     })
       .then(function (r) { return r.json(); })
       .then(function (res) {
-        if (res.code === 0) {
+        if (res.code === 200) {
           location.href = '/domains';
         } else {
-          showError(res.msg || '登录失败');
+          showError(res.message || '登录失败');
         }
       })
       .catch(function () { showError('网络异常，请重试'); })

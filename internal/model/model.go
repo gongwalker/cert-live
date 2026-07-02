@@ -8,23 +8,18 @@ type User struct {
 	PasswordHash string `json:"-"`
 }
 
-type Group struct {
-	ID   int64  `json:"id"`
-	Name string `json:"name"`
-}
-
+// Domain 一条域名 = 一行；包含用户编辑字段和最近一次探测结果
 type Domain struct {
 	ID        int64  `json:"id"`
 	Host      string `json:"host"`
 	Port      int    `json:"port"`
-	GroupID   *int64 `json:"group_id,omitempty"`
-	GroupName string `json:"group_name,omitempty"`
 	Notes     string `json:"notes,omitempty"`
 	CreatedAt int64  `json:"created_at"`
 
-	// Latest probe result, joined for list views.
+	// 最近一次探测结果（零值表示尚未探测）
 	Subject       string   `json:"subject,omitempty"`
-	Issuer        string   `json:"issuer,omitempty"`
+	Issuer        string   `json:"issuer,omitempty"`      // 中间证书 CN
+	IssuerOrg     string   `json:"issuer_org,omitempty"`  // 签发 CA 组织名
 	SANs          []string `json:"sans,omitempty"`
 	SerialNumber  string   `json:"serial_number,omitempty"`
 	NotBefore     int64    `json:"not_before,omitempty"`
@@ -36,11 +31,11 @@ type Domain struct {
 }
 
 type Settings struct {
-	FeishuWebhook     string `json:"feishu_webhook"`
-	FeishuSecret      string `json:"feishu_secret"`
-	WeComWebhook      string `json:"wecom_webhook"`
-	AlertTiersJSON    string `json:"alert_tiers"`      // JSON array of ints, e.g. [30,7,1]
-	CheckIntervalMin  int    `json:"check_interval"`   // minutes between full scans
+	FeishuWebhook    string `json:"feishu_webhook"`
+	FeishuSecret     string `json:"feishu_secret"`
+	WeComWebhook     string `json:"wecom_webhook"`
+	AlertTiersJSON   string `json:"alert_tiers"`    // JSON array of ints, e.g. [30,7,1]
+	CheckIntervalMin int    `json:"check_interval"` // minutes between full scans
 }
 
 func (s Settings) Tiers() []int {

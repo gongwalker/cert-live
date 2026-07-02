@@ -11,6 +11,9 @@ import (
 	"cert-live/internal/model"
 )
 
+// schema 库结构：users / domains（含探测结果）/ alert_log / settings
+// - domains 合并了原 cert_records，1 条域名 1 行
+// - 已移除 domain_groups（UI 不再用）
 const schema = `
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -19,35 +22,27 @@ CREATE TABLE IF NOT EXISTS users (
   created_at INTEGER NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS domain_groups (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT NOT NULL,
-  created_at INTEGER NOT NULL
-);
-
 CREATE TABLE IF NOT EXISTS domains (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   host TEXT NOT NULL,
   port INTEGER NOT NULL DEFAULT 443,
-  group_id INTEGER REFERENCES domain_groups(id) ON DELETE SET NULL,
   notes TEXT,
-  created_at INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_domains_group ON domains(group_id);
-
-CREATE TABLE IF NOT EXISTS cert_records (
-  domain_id INTEGER PRIMARY KEY REFERENCES domains(id) ON DELETE CASCADE,
+  created_at INTEGER NOT NULL,
+  -- 探测结果（首次成功探测后填充；NULL 表示尚未探测）
   subject TEXT,
   issuer TEXT,
+  issuer_org TEXT,
   sans TEXT,
   serial_number TEXT,
   not_before INTEGER,
   not_after INTEGER,
   is_wildcard INTEGER,
   days_remaining INTEGER,
-  last_checked INTEGER NOT NULL,
+  last_checked INTEGER,
   last_error TEXT
 );
+CREATE INDEX IF NOT EXISTS idx_domains_host ON domains(host);
+CREATE INDEX IF NOT EXISTS idx_domains_not_after ON domains(not_after);
 
 CREATE TABLE IF NOT EXISTS alert_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -65,24 +60,21 @@ CREATE TABLE IF NOT EXISTS settings (
 `
 
 const domainListQuery = `
-SELECT d.id, d.host, d.port, d.group_id, g.name, d.notes, d.created_at,
-       c.subject, c.issuer, c.sans, c.serial_number, c.not_before, c.not_after,
-       c.is_wildcard, c.days_remaining, c.last_checked, c.last_error
-FROM domains d
-LEFT JOIN domain_groups g ON g.id = d.group_id
-LEFT JOIN cert_records c ON c.domain_id = d.id
-WHERE (? = '%%' OR d.host LIKE ? OR d.notes LIKE ?)
-  AND (? = 0 OR d.group_id = ?)
-ORDER BY d.created_at DESC`
+SELECT id, host, port, notes, created_at,
+       subject, issuer, issuer_org, sans, serial_number,
+       not_before, not_after, is_wildcard, days_remaining,
+       last_checked, last_error
+FROM domains
+WHERE (? = '%%' OR host LIKE ? OR notes LIKE ?)
+ORDER BY created_at DESC`
 
 const domainGetQuery = `
-SELECT d.id, d.host, d.port, d.group_id, g.name, d.notes, d.created_at,
-       c.subject, c.issuer, c.sans, c.serial_number, c.not_before, c.not_after,
-       c.is_wildcard, c.days_remaining, c.last_checked, c.last_error
-FROM domains d
-LEFT JOIN domain_groups g ON g.id = d.group_id
-LEFT JOIN cert_records c ON c.domain_id = d.id
-WHERE d.id = ?`
+SELECT id, host, port, notes, created_at,
+       subject, issuer, issuer_org, sans, serial_number,
+       not_before, not_after, is_wildcard, days_remaining,
+       last_checked, last_error
+FROM domains
+WHERE id = ?`
 
 type scanner interface {
 	Scan(dest ...any) error
@@ -90,29 +82,25 @@ type scanner interface {
 
 func scanDomain(row scanner) (model.Domain, error) {
 	var d model.Domain
-	var groupID sql.NullInt64
-	var groupName, notes sql.NullString
-	var subject, issuer, serial, lastErr sql.NullString
+	var notes sql.NullString
+	var subject, issuer, issuerOrg, serial, lastErr sql.NullString
+	var sansJSON []byte
 	var notBefore, notAfter, daysRemaining sql.NullInt64
 	var lastChecked sql.NullInt64
 	var isWildcard sql.NullInt64
-	var sansJSON []byte
 
 	if err := row.Scan(
-		&d.ID, &d.Host, &d.Port, &groupID, &groupName, &notes, &d.CreatedAt,
-		&subject, &issuer, &sansJSON, &serial, &notBefore, &notAfter,
-		&isWildcard, &daysRemaining, &lastChecked, &lastErr,
+		&d.ID, &d.Host, &d.Port, &notes, &d.CreatedAt,
+		&subject, &issuer, &issuerOrg, &sansJSON, &serial,
+		&notBefore, &notAfter, &isWildcard, &daysRemaining,
+		&lastChecked, &lastErr,
 	); err != nil {
 		return d, err
 	}
-	if groupID.Valid {
-		gid := groupID.Int64
-		d.GroupID = &gid
-	}
-	d.GroupName = groupName.String
 	d.Notes = notes.String
 	d.Subject = subject.String
 	d.Issuer = issuer.String
+	d.IssuerOrg = issuerOrg.String
 	d.SerialNumber = serial.String
 	if len(sansJSON) > 0 {
 		_ = json.Unmarshal(sansJSON, &d.SANs)
@@ -138,22 +126,15 @@ func scanDomain(row scanner) (model.Domain, error) {
 
 func nowUnix() int64 { return time.Now().Unix() }
 
-func nullableInt(p *int64) any {
-	if p == nil {
-		return nil
-	}
-	return *p
-}
-
-func nullableInt64(v int64) any {
-	if v == 0 {
+func nullableString(v string) any {
+	if v == "" {
 		return nil
 	}
 	return v
 }
 
-func nullableString(v string) any {
-	if v == "" {
+func nullableInt64(v int64) any {
+	if v == 0 {
 		return nil
 	}
 	return v
@@ -166,8 +147,8 @@ func boolToInt(b bool) int {
 	return 0
 }
 
+// sqlQuote 转义单引号用于 VACUUM INTO 的路径字面量
 func sqlQuote(s string) string {
-	// escape single quotes for a VACUUM INTO path literal
 	escaped := ""
 	for _, r := range s {
 		if r == '\'' {

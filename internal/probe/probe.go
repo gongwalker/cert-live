@@ -3,7 +3,6 @@ package probe
 import (
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/hex"
 	"fmt"
 	"math/big"
 	"net"
@@ -14,7 +13,8 @@ import (
 type Result struct {
 	Host          string
 	Subject       string
-	Issuer        string
+	Issuer        string  // 中间证书 CN
+	IssuerOrg     string  // 签发 CA 组织名
 	SANs          []string
 	SerialNumber  string
 	NotBefore     time.Time
@@ -58,6 +58,9 @@ func parse(host string, cert *x509.Certificate) *Result {
 		IsWildcard:    isWildcard(cert),
 		DaysRemaining: int(time.Until(cert.NotAfter).Hours() / 24),
 	}
+	if len(cert.Issuer.Organization) > 0 {
+		r.IssuerOrg = cert.Issuer.Organization[0]
+	}
 	if r.Subject == "" {
 		r.Subject = cert.Subject.String()
 	}
@@ -75,12 +78,8 @@ func serialHex(n *big.Int) string {
 	if len(b) == 0 {
 		return "0"
 	}
-	// colon-separated hex bytes, the conventional serial representation
-	parts := make([]string, len(b))
-	for i, by := range b {
-		parts[i] = hex.EncodeToString([]byte{by})
-	}
-	return strings.Join(parts, ":")
+	// 与 openssl x509 -serial 输出一致：连续大写 hex
+	return fmt.Sprintf("%X", b)
 }
 
 func isWildcard(cert *x509.Certificate) bool {
