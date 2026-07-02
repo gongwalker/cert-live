@@ -300,8 +300,11 @@
       '<button class="action-btn danger" data-action="delete" data-id="' + d.id + '" title="删除"><i class="fas fa-trash"></i></button>' +
       '</td>';
 
-    // 拖拽手柄（仅在 PC 表格、无搜索/筛选时启用）
-    var canDrag = !state.search && Object.keys(state.filterTagIDs).length === 0;
+    // 拖拽手柄（仅在 PC 表格、无搜索/筛选、且无分页时启用；分页下重排会破坏全局顺序）
+    var isPaginated = state.domains.length > state.pageSize;
+    var canDrag = !state.search
+               && Object.keys(state.filterTagIDs).length === 0
+               && !isPaginated;
     var drag = '<td class="col-drag">' +
       (canDrag ? '<span class="drag-handle" title="拖动排序"><i class="fas fa-grip-vertical"></i></span>' : '') +
       '</td>';
