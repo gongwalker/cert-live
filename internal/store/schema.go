@@ -86,7 +86,7 @@ FROM domains
 WHERE (? = '%%' OR host LIKE ? OR notes LIKE ?)`
 
 const domainListOrderBy = `
-ORDER BY sort_order ASC, id ASC`
+ORDER BY sort_order ASC, id DESC`
 
 const domainGetQuery = `
 SELECT id, host, port, notes, created_at,

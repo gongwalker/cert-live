@@ -257,6 +257,22 @@ body {
   letter-spacing: .5px;
   white-space: nowrap;
 }
+th.sortable {
+  cursor: pointer;
+  user-select: none;
+  transition: color .15s;
+}
+th.sortable:hover { color: var(--text-main); }
+.sort-indicator {
+  margin-left: 4px;
+  font-size: 10px;
+  opacity: .4;
+}
+th.sort-asc .sort-indicator,
+th.sort-desc .sort-indicator {
+  opacity: 1;
+  color: var(--accent-3);
+}
 .domains-table tbody td {
   padding: 14px 16px;
   border-bottom: 1px solid rgba(64, 158, 255, 0.08);

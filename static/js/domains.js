@@ -6,6 +6,7 @@
     domains: [],
     search: '',
     filterTagIDs: {},  // 多标签 AND 筛选
+    sortMode: 'manual',  // manual | expiry_asc | expiry_desc
     page: 1,
     pageSize: 20,
     checkingIds: {} // 正在检测中的域名 id
@@ -185,9 +186,21 @@
   }
 
   // ===== 渲染 =====
-  // 不在前端做排序，直接用后端 sort_order 返回的顺序（用户可拖拽自定义）
+  // manual: 用后端 sort_order 返回顺序；expiry_asc/desc: 按到期时间排（错误/未检测放最后）
   function filteredSorted() {
-    return state.domains.slice();
+    var list = state.domains.slice();
+    if (state.sortMode === 'expiry_asc' || state.sortMode === 'expiry_desc') {
+      var dir = state.sortMode === 'expiry_asc' ? 1 : -1;
+      list.sort(function (a, b) {
+        var aKey = (a.last_error || !a.not_after) ? null : a.not_after;
+        var bKey = (b.last_error || !b.not_after) ? null : b.not_after;
+        if (aKey === null && bKey === null) return 0;
+        if (aKey === null) return 1;   // 无日期的排到最后
+        if (bKey === null) return -1;
+        return (aKey - bKey) * dir;
+      });
+    }
+    return list;
   }
 
   function render() {
@@ -300,9 +313,10 @@
       '<button class="action-btn danger" data-action="delete" data-id="' + d.id + '" title="删除"><i class="fas fa-trash"></i></button>' +
       '</td>';
 
-    // 拖拽手柄（仅在 PC 表格、无搜索/筛选、且无分页时启用；分页下重排会破坏全局顺序）
+    // 拖拽手柄（仅在 manual 排序 + 无搜索/筛选 + 无分页 时启用）
     var isPaginated = state.domains.length > state.pageSize;
-    var canDrag = !state.search
+    var canDrag = state.sortMode === 'manual'
+               && !state.search
                && Object.keys(state.filterTagIDs).length === 0
                && !isPaginated;
     var drag = '<td class="col-drag">' +
@@ -438,6 +452,28 @@
   }
   $body.addEventListener('click', onItemClicked);
   $cardList.addEventListener('click', onItemClicked);
+
+  // ===== 点击表头按到期时间排序（manual → asc → desc → manual 循环）=====
+  var $sortExpiry = document.getElementById('sortExpiry');
+  var SORT_CYCLE = ['manual', 'expiry_asc', 'expiry_desc'];
+
+  $sortExpiry.addEventListener('click', function () {
+    var cur = SORT_CYCLE.indexOf(state.sortMode);
+    state.sortMode = SORT_CYCLE[(cur + 1) % SORT_CYCLE.length];
+    state.page = 1;
+    updateSortIndicator();
+    render();
+  });
+
+  function updateSortIndicator() {
+    var iconClass = 'fa-sort';
+    if (state.sortMode === 'expiry_asc') iconClass = 'fa-sort-up';
+    else if (state.sortMode === 'expiry_desc') iconClass = 'fa-sort-down';
+    var i = $sortExpiry.querySelector('.sort-indicator i');
+    if (i) i.className = 'fas ' + iconClass;
+    $sortExpiry.classList.toggle('sort-asc', state.sortMode === 'expiry_asc');
+    $sortExpiry.classList.toggle('sort-desc', state.sortMode === 'expiry_desc');
+  }
 
   // ===== 表格行拖拽排序（PC，仅在手柄上按下才允许拖）=====
   // 用 mousedown 检测：手柄按下 → 给该行加 draggable=true；松开/离开 → 复位
