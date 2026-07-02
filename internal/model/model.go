@@ -21,10 +21,11 @@ type Domain struct {
 	ID        int64  `json:"id"`
 	Host      string `json:"host"`
 	Port      int    `json:"port"`
+	Path      string `json:"path,omitempty"`
 	Notes     string `json:"notes,omitempty"`
 	CreatedAt int64  `json:"created_at"`
 
-	// 最近一次探测结果（零值表示尚未探测）
+	// 最近一次证书探测结果（零值表示尚未探测）
 	Subject       string   `json:"subject,omitempty"`
 	Issuer        string   `json:"issuer,omitempty"`      // 中间证书 CN
 	IssuerOrg     string   `json:"issuer_org,omitempty"`  // 签发 CA 组织名
@@ -36,6 +37,11 @@ type Domain struct {
 	DaysRemaining int      `json:"days_remaining,omitempty"`
 	LastChecked   int64    `json:"last_checked,omitempty"`
 	LastError     string   `json:"last_error,omitempty"`
+
+	// 网站健康探测（HTTP 状态码）
+	HTTPStatus  int    `json:"http_status,omitempty"`
+	HTTPError   string `json:"http_error,omitempty"`
+	HTTPChecked int64  `json:"http_checked,omitempty"`
 
 	// 多对多标签关联（查询时 JOIN 出来）
 	Tags []Tag `json:"tags,omitempty"`

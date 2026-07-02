@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -112,30 +113,45 @@ func (s *Server) handleListDomains(c *gin.Context) {
 }
 
 type domainReq struct {
-	Host   string  `json:"host"`
-	Port   int     `json:"port"`
+	URL    string  `json:"url"`
 	Notes  string  `json:"notes"`
 	TagIDs []int64 `json:"tag_ids"`
 }
 
-// normalizeHost 去掉 scheme / path / 查询串，仅保留 host[:port]
-// 例："https://example.com:8443/path" → "example.com:8443"
-func normalizeHost(s string) string {
-	s = strings.TrimSpace(s)
-	lower := strings.ToLower(s)
-	switch {
-	case strings.HasPrefix(lower, "https://"):
-		s = s[len("https://"):]
-	case strings.HasPrefix(lower, "http://"):
-		s = s[len("http://"):]
+// parseURL 把用户输入解析成 host / port / path，强制 https scheme
+// 接受 "example.com"、"example.com/login"、"https://example.com:8443/health?q=1"
+func parseURL(raw string) (host string, port int, path string, err error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", 0, "", fmt.Errorf("URL 不能为空")
 	}
-	for i, r := range s {
-		if r == '/' || r == '?' || r == '#' {
-			s = s[:i]
-			break
+	// 没有 scheme 自动补 https://
+	if !strings.Contains(raw, "://") {
+		raw = "https://" + raw
+	}
+	u, e := url.Parse(raw)
+	if e != nil || u.Hostname() == "" {
+		return "", 0, "", fmt.Errorf("URL 解析失败")
+	}
+	host = u.Hostname()
+	port = 443
+	if p := u.Port(); p != "" {
+		if n, _, ok := strings.Cut(p, ""); ok {
+			_ = n
+		}
+		if n, e := strconv.Atoi(p); e == nil && n > 0 {
+			port = n
 		}
 	}
-	return strings.TrimSpace(s)
+	// path + query（不含 fragment）
+	path = u.Path
+	if path == "" {
+		path = "/"
+	}
+	if u.RawQuery != "" {
+		path += "?" + u.RawQuery
+	}
+	return host, port, path, nil
 }
 
 func (s *Server) handleCreateDomain(c *gin.Context) {
@@ -144,15 +160,12 @@ func (s *Server) handleCreateDomain(c *gin.Context) {
 		fail(c, http.StatusBadRequest, "请求体格式错误")
 		return
 	}
-	req.Host = normalizeHost(req.Host)
-	if req.Host == "" {
-		fail(c, http.StatusBadRequest, "host 不能为空")
+	host, port, path, err := parseURL(req.URL)
+	if err != nil {
+		fail(c, http.StatusBadRequest, err.Error())
 		return
 	}
-	if req.Port == 0 {
-		req.Port = 443
-	}
-	d, err := s.st.CreateDomain(req.Host, req.Port, req.Notes, req.TagIDs)
+	d, err := s.st.CreateDomain(host, port, path, req.Notes, req.TagIDs)
 	if err != nil {
 		fail(c, http.StatusInternalServerError, err.Error())
 		return
@@ -171,15 +184,12 @@ func (s *Server) handleUpdateDomain(c *gin.Context) {
 		fail(c, http.StatusBadRequest, "请求体格式错误")
 		return
 	}
-	req.Host = normalizeHost(req.Host)
-	if req.Host == "" {
-		fail(c, http.StatusBadRequest, "host 不能为空")
+	host, port, path, err := parseURL(req.URL)
+	if err != nil {
+		fail(c, http.StatusBadRequest, err.Error())
 		return
 	}
-	if req.Port == 0 {
-		req.Port = 443
-	}
-	if err := s.st.UpdateDomain(id, req.Host, req.Port, req.Notes, req.TagIDs); err != nil {
+	if err := s.st.UpdateDomain(id, host, port, path, req.Notes, req.TagIDs); err != nil {
 		fail(c, http.StatusInternalServerError, err.Error())
 		return
 	}

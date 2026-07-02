@@ -26,10 +26,11 @@ CREATE TABLE IF NOT EXISTS domains (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   host TEXT NOT NULL,
   port INTEGER NOT NULL DEFAULT 443,
+  path TEXT NOT NULL DEFAULT '/',
   notes TEXT,
   created_at INTEGER NOT NULL,
   sort_order INTEGER NOT NULL DEFAULT 0,
-  -- 探测结果（首次成功探测后填充；NULL 表示尚未探测）
+  -- 证书探测结果（首次成功探测后填充；NULL 表示尚未探测）
   subject TEXT,
   issuer TEXT,
   issuer_org TEXT,
@@ -40,7 +41,11 @@ CREATE TABLE IF NOT EXISTS domains (
   is_wildcard INTEGER,
   days_remaining INTEGER,
   last_checked INTEGER,
-  last_error TEXT
+  last_error TEXT,
+  -- 网站健康探测（HTTP 状态码）
+  http_status INTEGER,
+  http_error TEXT,
+  http_checked INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_domains_host ON domains(host);
 CREATE INDEX IF NOT EXISTS idx_domains_not_after ON domains(not_after);
@@ -78,10 +83,11 @@ CREATE INDEX IF NOT EXISTS idx_domain_tags_tag ON domain_tags(tag_id);
 `
 
 const domainListQuery = `
-SELECT id, host, port, notes, created_at,
+SELECT id, host, port, COALESCE(path,'/'), notes, created_at,
        subject, issuer, issuer_org, sans, serial_number,
        not_before, not_after, is_wildcard, days_remaining,
-       last_checked, last_error
+       last_checked, last_error,
+       COALESCE(http_status,0), COALESCE(http_error,''), COALESCE(http_checked,0)
 FROM domains
 WHERE (? = '%%' OR host LIKE ? OR notes LIKE ?)`
 
@@ -89,10 +95,11 @@ const domainListOrderBy = `
 ORDER BY sort_order ASC, id DESC`
 
 const domainGetQuery = `
-SELECT id, host, port, notes, created_at,
+SELECT id, host, port, COALESCE(path,'/'), notes, created_at,
        subject, issuer, issuer_org, sans, serial_number,
        not_before, not_after, is_wildcard, days_remaining,
-       last_checked, last_error
+       last_checked, last_error,
+       COALESCE(http_status,0), COALESCE(http_error,''), COALESCE(http_checked,0)
 FROM domains
 WHERE id = ?`
 
@@ -104,16 +111,18 @@ func scanDomain(row scanner) (model.Domain, error) {
 	var d model.Domain
 	var notes sql.NullString
 	var subject, issuer, issuerOrg, serial, lastErr sql.NullString
+	var httpErr sql.NullString
 	var sansJSON []byte
 	var notBefore, notAfter, daysRemaining sql.NullInt64
-	var lastChecked sql.NullInt64
+	var lastChecked, httpStatus, httpChecked sql.NullInt64
 	var isWildcard sql.NullInt64
 
 	if err := row.Scan(
-		&d.ID, &d.Host, &d.Port, &notes, &d.CreatedAt,
+		&d.ID, &d.Host, &d.Port, &d.Path, &notes, &d.CreatedAt,
 		&subject, &issuer, &issuerOrg, &sansJSON, &serial,
 		&notBefore, &notAfter, &isWildcard, &daysRemaining,
 		&lastChecked, &lastErr,
+		&httpStatus, &httpErr, &httpChecked,
 	); err != nil {
 		return d, err
 	}
@@ -141,6 +150,13 @@ func scanDomain(row scanner) (model.Domain, error) {
 		d.LastChecked = lastChecked.Int64
 	}
 	d.LastError = lastErr.String
+	if httpStatus.Valid {
+		d.HTTPStatus = int(httpStatus.Int64)
+	}
+	d.HTTPError = httpErr.String
+	if httpChecked.Valid {
+		d.HTTPChecked = httpChecked.Int64
+	}
 	return d, nil
 }
 

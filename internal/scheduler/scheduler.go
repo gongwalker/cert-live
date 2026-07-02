@@ -111,6 +111,15 @@ func (s *Scheduler) checkOne(domainID int64, tiers []int) []notify.Alert {
 	rec.IsWildcard = res.IsWildcard
 	rec.DaysRemaining = res.DaysRemaining
 	rec.LastChecked = now
+
+	// TLS 成功后紧接着做 HTTP 健康探测
+	httpRes := probe.HTTPProbe(dom.Host, dom.Port, dom.Path)
+	if httpRes != nil {
+		rec.HTTPStatus = httpRes.StatusCode
+		rec.HTTPError = httpRes.Error
+		rec.HTTPChecked = now
+	}
+
 	if e := s.st.UpdateDomainProbe(rec); e != nil {
 		log.Printf("scheduler: update probe for %s: %v", dom.Host, e)
 		return nil

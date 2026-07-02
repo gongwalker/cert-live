@@ -52,6 +52,12 @@ func (s *Store) EnsureSchema() error {
 	_, _ = s.db.Exec(`ALTER TABLE tags ADD COLUMN color TEXT`)
 	// 老库迁移：补 domains.sort_order 列
 	_, _ = s.db.Exec(`ALTER TABLE domains ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0`)
+	// 老库迁移：补 domains 证书 HTTP 探测列
+	_, _ = s.db.Exec(`ALTER TABLE domains ADD COLUMN http_status INTEGER`)
+	_, _ = s.db.Exec(`ALTER TABLE domains ADD COLUMN http_error TEXT`)
+	_, _ = s.db.Exec(`ALTER TABLE domains ADD COLUMN http_checked INTEGER`)
+	// 老库迁移：补 domains.path
+	_, _ = s.db.Exec(`ALTER TABLE domains ADD COLUMN path TEXT NOT NULL DEFAULT '/'`)
 	// 迁移完成后才能建这个索引（依赖 sort_order 列）
 	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_domains_sort ON domains(sort_order)`)
 	for k, v := range map[string]string{
@@ -169,11 +175,11 @@ func (s *Store) GetDomain(id int64) (*model.Domain, error) {
 	return &d, nil
 }
 
-func (s *Store) CreateDomain(host string, port int, notes string, tagIDs []int64) (model.Domain, error) {
+func (s *Store) CreateDomain(host string, port int, path, notes string, tagIDs []int64) (model.Domain, error) {
 	// 新域名默认排到最后
-	res, err := s.db.Exec(`INSERT INTO domains(host, port, notes, created_at, sort_order)
-		VALUES(?,?,?,?, COALESCE((SELECT MAX(sort_order) FROM domains), -1) + 1)`,
-		host, port, nullableString(notes), nowUnix())
+	res, err := s.db.Exec(`INSERT INTO domains(host, port, path, notes, created_at, sort_order)
+		VALUES(?,?,?,?,?, COALESCE((SELECT MAX(sort_order) FROM domains), -1) + 1)`,
+		host, port, normalizePath(path), nullableString(notes), nowUnix())
 	if err != nil {
 		return model.Domain{}, err
 	}
@@ -181,7 +187,14 @@ func (s *Store) CreateDomain(host string, port int, notes string, tagIDs []int64
 	if err := s.SetDomainTags(id, tagIDs); err != nil {
 		return model.Domain{}, err
 	}
-	return model.Domain{ID: id, Host: host, Port: port, Notes: notes, CreatedAt: nowUnix()}, nil
+	return model.Domain{ID: id, Host: host, Port: port, Path: path, Notes: notes, CreatedAt: nowUnix()}, nil
+}
+
+func normalizePath(p string) string {
+	if p == "" {
+		return "/"
+	}
+	return p
 }
 
 // ReorderDomains 按 orderedIDs 顺序批量更新 sort_order
@@ -199,10 +212,10 @@ func (s *Store) ReorderDomains(orderedIDs []int64) error {
 	return tx.Commit()
 }
 
-// UpdateDomain 更新用户可编辑字段（host/port/notes/tags），不触碰探测结果
-func (s *Store) UpdateDomain(id int64, host string, port int, notes string, tagIDs []int64) error {
-	_, err := s.db.Exec(`UPDATE domains SET host=?, port=?, notes=? WHERE id=?`,
-		host, port, nullableString(notes), id)
+// UpdateDomain 更新用户可编辑字段（host/port/path/notes/tags），不触碰探测结果
+func (s *Store) UpdateDomain(id int64, host string, port int, path, notes string, tagIDs []int64) error {
+	_, err := s.db.Exec(`UPDATE domains SET host=?, port=?, path=?, notes=? WHERE id=?`,
+		host, port, normalizePath(path), nullableString(notes), id)
 	if err != nil {
 		return err
 	}
@@ -287,25 +300,35 @@ func (s *Store) ListAllDomainIDs() ([]int64, error) {
 	return ids, rows.Err()
 }
 
-// UpdateDomainProbe 写入一次 TLS 探测的结果（仅探测字段，不动用户字段）
+// UpdateDomainProbe 写入一次 TLS 探测 + HTTP 探测的结果（仅探测字段，不动用户字段）
 func (s *Store) UpdateDomainProbe(rec model.Domain) error {
 	sans, _ := json.Marshal(rec.SANs)
 	_, err := s.db.Exec(`UPDATE domains SET
 		subject=?, issuer=?, issuer_org=?, sans=?, serial_number=?,
 		not_before=?, not_after=?, is_wildcard=?, days_remaining=?,
-		last_checked=?, last_error=?
+		last_checked=?, last_error=?,
+		http_status=?, http_error=?, http_checked=?
 		WHERE id=?`,
 		nullableString(rec.Subject), nullableString(rec.Issuer), nullableString(rec.IssuerOrg),
 		string(sans), nullableString(rec.SerialNumber),
 		nullableInt64(rec.NotBefore), nullableInt64(rec.NotAfter),
 		boolToInt(rec.IsWildcard), rec.DaysRemaining,
 		rec.LastChecked, nullableString(rec.LastError),
+		nullableHTTPStatus(rec.HTTPStatus), nullableString(rec.HTTPError), nullableInt64(rec.HTTPChecked),
 		rec.ID)
 	if err != nil {
 		return err
 	}
 	s.purgeStaleAlerts(rec.ID, rec.SerialNumber, rec.LastError != "")
 	return nil
+}
+
+// nullableHTTPStatus 0 视为未探测，存 NULL
+func nullableHTTPStatus(v int) any {
+	if v == 0 {
+		return nil
+	}
+	return v
 }
 
 // ---------------- alert log ----------------

@@ -87,14 +87,15 @@
     return fmtDate(unix);
   }
 
-  // 计算状态：返回 {cls, label}
+  // 计算证书状态：返回 {cls, label}
+  // 全部加「证书」前缀，与 HTTP 徽章对仗
   function statusOf(d) {
-    if (d.last_error) return { cls: 'badge-err', label: '连接失败' };
-    if (!d.not_after) return { cls: 'badge-err', label: '未检测' };
-    if (d.days_remaining < 0) return { cls: 'badge-danger', label: '已过期' };
-    if (d.days_remaining <= 7) return { cls: 'badge-danger', label: '紧急' };
-    if (d.days_remaining <= 30) return { cls: 'badge-warn', label: '将过期' };
-    return { cls: 'badge-ok', label: '健康' };
+    if (d.last_error) return { cls: 'badge-err', label: '证书失败' };
+    if (!d.not_after) return { cls: 'badge-err', label: '证书未检测' };
+    if (d.days_remaining < 0) return { cls: 'badge-danger', label: '证书已过期' };
+    if (d.days_remaining <= 7) return { cls: 'badge-danger', label: '证书紧急' };
+    if (d.days_remaining <= 30) return { cls: 'badge-warn', label: '证书将过期' };
+    return { cls: 'badge-ok', label: '证书健康' };
   }
 
   function daysBadge(days) {
@@ -128,6 +129,22 @@
               hexToRgba(t.color, 0.5) + ';color:' + escapeHTML(t.color) + ';"';
     }
     return '<span class="' + cls + '"' + style + '>' + iconHTML + escapeHTML(t.name) + '</span>';
+  }
+
+  // 渲染 HTTP 状态码徽章：2xx/3xx 绿、4xx 黄、5xx 红、连接失败 灰红、未检测 不显示
+  function httpBadgeHTML(d) {
+    if (!d.http_checked) return '';  // 从未检测过
+    if (d.http_error) {
+      return '<span class="http-badge http-err" title="' + escapeHTML(d.http_error) + '"><i class="fas fa-unlink"></i> HTTP 失败</span>';
+    }
+    var code = d.http_status;
+    if (!code) return '';
+    var cls;
+    if (code >= 200 && code < 400) cls = 'http-ok';      // 2xx/3xx 健康
+    else if (code >= 400 && code < 500) cls = 'http-warn'; // 4xx 客户端错误
+    else if (code >= 500) cls = 'http-err';                // 5xx 服务端错误
+    else cls = 'http-err';
+    return '<span class="http-badge ' + cls + '" title="HTTP 状态码">HTTP ' + code + '</span>';
   }
 
   function toast(msg, type) {
@@ -174,13 +191,13 @@
     Object.keys(state.filterTagIDs).forEach(function (id) {
       url += '&tag_ids=' + encodeURIComponent(id);
     });
-    $body.innerHTML = '<tr class="loading-row"><td colspan="6"><div class="spinner"></div></td></tr>';
+    $body.innerHTML = '<tr class="loading-row"><td colspan="8"><div class="spinner"></div></td></tr>';
     $empty.hidden = true;
     return api('GET', url).then(function (list) {
       state.domains = list || [];
       render();
     }).catch(function (err) {
-      $body.innerHTML = '<tr><td colspan="6" style="padding:30px;text-align:center;color:#ff6b6b;">加载失败：' +
+      $body.innerHTML = '<tr><td colspan="8" style="padding:30px;text-align:center;color:#ff6b6b;">加载失败：' +
         escapeHTML(err.message) + '</td></tr>';
     });
   }
@@ -237,17 +254,24 @@
     var checking = state.checkingIds[d.id];
 
     // 域名 + 状态徽章 + 标签 + 端口
+    // host + 端口 + 路径（非根路径时显示）
     var portSuffix = d.port && d.port !== 443 ? ':' + d.port : '';
+    var pathSuffix = (d.path && d.path !== '/' && d.path !== '') ? escapeHTML(d.path) : '';
+    var fullHost = escapeHTML(d.host) + (portSuffix ? '<span class="host-port">' + escapeHTML(portSuffix) + '</span>' : '')
+                 + (pathSuffix ? '<span class="host-path">' + pathSuffix + '</span>' : '');
     var tagsHTML = (d.tags && d.tags.length)
       ? '<div class="domain-tags">' + d.tags.map(function (t) {
           return tagChip(t);
         }).join('') + '</div>'
       : '';
+    var httpBadge = httpBadgeHTML(d);  // HTTP 状态码徽章
     var host = '<td class="col-host"><div class="host-cell">' +
-      '<span class="host-name">' + escapeHTML(d.host) + '</span>' +
-      '<span class="badge ' + st.cls + '">' + st.label + '</span>' +
-      tagsHTML +
-      (portSuffix ? '<span class="host-meta">' + escapeHTML(portSuffix) + '</span>' : '') +
+      '<span class="host-name">' + fullHost + '</span>' +
+      '<div class="host-meta-row">' +
+        '<span class="badge ' + st.cls + '">' + st.label + '</span>' +
+        httpBadge +
+        (d.tags && d.tags.length ? d.tags.map(function (t) { return tagChip(t); }).join('') : '') +
+      '</div>' +
       '</div></td>';
 
     // 证书信息（主体 + 序列号 + 签发CA 整合到一格）
@@ -333,17 +357,25 @@
     var st = statusOf(d);
     var checking = state.checkingIds[d.id];
 
-    // 头部：host + 状态 + 操作
+    // 头部：host + 状态 + HTTP 状态 + 操作
+    var portSuffix = d.port && d.port !== 443 ? ':' + d.port : '';
+    var pathSuffix = (d.path && d.path !== '/' && d.path !== '') ? escapeHTML(d.path) : '';
+    var fullHost = escapeHTML(d.host) + (portSuffix ? '<span class="host-port">' + escapeHTML(portSuffix) + '</span>' : '')
+                 + (pathSuffix ? '<span class="host-path">' + pathSuffix + '</span>' : '');
     var tagsHTML = (d.tags && d.tags.length)
       ? '<div class="domain-tags">' + d.tags.map(function (t) {
           return tagChip(t);
         }).join('') + '</div>'
       : '';
+    var httpBadge = httpBadgeHTML(d);
     var head = '<div class="card-head">' +
       '<div class="card-host">' +
-        '<span class="host-name">' + escapeHTML(d.host) + '</span>' +
-        '<span class="badge ' + st.cls + '">' + st.label + '</span>' +
-        tagsHTML +
+        '<span class="host-name">' + fullHost + '</span>' +
+        '<div class="host-meta-row">' +
+          '<span class="badge ' + st.cls + '">' + st.label + '</span>' +
+          httpBadge +
+          (d.tags && d.tags.length ? d.tags.map(function (t) { return tagChip(t); }).join('') : '') +
+        '</div>' +
       '</div>' +
       '<div class="card-actions">' +
         '<button class="action-btn' + (checking ? ' checking' : '') + '" data-action="check" data-id="' + d.id + '" title="立即检测"' + (checking ? ' disabled' : '') + '><i class="fas fa-bolt"></i></button>' +
@@ -588,7 +620,7 @@
   document.getElementById('addBtn').addEventListener('click', openAdd);
 
   function openAdd() {
-    $formTitle.textContent = '新增域名';
+    $formTitle.textContent = '新增网址';
     $formSub.textContent = '添加后可立即检测证书状态';
     $formId.value = '';
     $formHost.value = '';
@@ -600,13 +632,21 @@
     setTimeout(function () { $formHost.focus(); }, 100);
   }
 
+  // 把 host + port + path 重组成 URL 字符串，用于编辑时回填输入框
+  function buildURL(host, port, path) {
+    var s = host || '';
+    if (port && port !== 443) s += ':' + port;
+    if (path && path !== '/' && path !== '') s += path;
+    return s;
+  }
+
   function openEdit(id) {
     var d = state.domains.find(function (x) { return x.id === id; });
     if (!d) return;
-    $formTitle.textContent = '编辑域名';
+    $formTitle.textContent = '编辑网址';
     $formSub.textContent = '修改 ' + d.host + ' 的信息';
     $formId.value = d.id;
-    $formHost.value = d.host;
+    $formHost.value = buildURL(d.host, d.port, d.path);
     $formNotes.value = d.notes || '';
     selectedTagIDs = {};
     (d.tags || []).forEach(function (t) { selectedTagIDs[t.id] = true; });
@@ -708,18 +748,18 @@
     Modal.open('deleteModal');
   }
 
-  // 表单提交（新增 / 编辑）
+  // 表单提交（新增 / 编辑）— 直接发 URL，后端解析
   $form.addEventListener('submit', function (e) {
     e.preventDefault();
-    var host = normalizeHost($formHost.value);
-    if (!host) {
-      toast('请输入域名', 'error');
+    var url = ($formHost.value || '').trim();
+    if (!url) {
+      toast('请输入网址', 'error');
       $formHost.focus();
       return;
     }
     var notes = $formNotes.value.trim();
     var tagIDs = Object.keys(selectedTagIDs).map(function (s) { return parseInt(s, 10); });
-    var body = { host: host, notes: notes, tag_ids: tagIDs };
+    var body = { url: url, notes: notes, tag_ids: tagIDs };
 
     var id = $formId.value;
     var req = id

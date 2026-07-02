@@ -4,8 +4,10 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"io"
 	"math/big"
 	"net"
+	"net/http"
 	"strings"
 	"time"
 )
@@ -92,4 +94,37 @@ func isWildcard(cert *x509.Certificate) bool {
 		}
 	}
 	return false
+}
+
+// HTTPResult 网站健康探测结果：StatusCode 和 Error 二选一非空
+type HTTPResult struct {
+	StatusCode int
+	Error      string
+}
+
+// HTTPProbe 用 GET 探测 https://host:port/path，10s 超时，不跟随重定向（看原始状态码）
+func HTTPProbe(host string, port int, urlPath string) *HTTPResult {
+	return HTTPProbeTimeout(host, port, urlPath, 10*time.Second)
+}
+
+func HTTPProbeTimeout(host string, port int, urlPath string, timeout time.Duration) *HTTPResult {
+	if urlPath == "" {
+		urlPath = "/"
+	}
+	full := fmt.Sprintf("https://%s%s", net.JoinHostPort(host, fmt.Sprintf("%d", port)), urlPath)
+	client := &http.Client{
+		Timeout: timeout,
+		// 不跟随重定向，直接看首次响应
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	resp, err := client.Get(full)
+	if err != nil {
+		return &HTTPResult{Error: err.Error()}
+	}
+	defer resp.Body.Close()
+	// 主动丢弃 body，避免连接被占着
+	_, _ = io.CopyN(io.Discard, resp.Body, 1024)
+	return &HTTPResult{StatusCode: resp.StatusCode}
 }

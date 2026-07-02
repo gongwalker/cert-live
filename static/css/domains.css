@@ -348,7 +348,7 @@ tr.dragover-below { box-shadow: inset 0 -2px 0 0 var(--accent); }
 .badge-err   { background: rgba(148, 163, 184, 0.15); color: var(--err); }
 
 /* 域名 */
-.host-cell { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.host-cell { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .host-name {
   color: var(--text-main);
   font-weight: 500;
@@ -356,12 +356,54 @@ tr.dragover-below { box-shadow: inset 0 -2px 0 0 var(--accent); }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.host-port { color: var(--text-muted); font-weight: 400; }
+.host-path { color: var(--text-muted); font-weight: 400; font-size: 11px; }
 .host-meta {
   color: var(--text-muted);
   font-size: 11px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.host-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+.host-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+/* HTTP 状态码徽章 */
+.http-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 500;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.http-badge.http-ok {
+  background: rgba(34, 197, 94, 0.15);
+  border-color: rgba(34, 197, 94, 0.4);
+  color: var(--ok);
+}
+.http-badge.http-warn {
+  background: rgba(255, 209, 102, 0.15);
+  border-color: rgba(255, 209, 102, 0.4);
+  color: var(--warn);
+}
+.http-badge.http-err {
+  background: rgba(255, 107, 107, 0.15);
+  border-color: rgba(255, 107, 107, 0.4);
+  color: var(--danger);
 }
 
 /* 证书信息（多行整合） */
