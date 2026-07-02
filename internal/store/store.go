@@ -176,9 +176,9 @@ func (s *Store) GetDomain(id int64) (*model.Domain, error) {
 }
 
 func (s *Store) CreateDomain(host string, port int, path, notes string, tagIDs []int64) (model.Domain, error) {
-	// 新域名默认排到最后
+	// 新域名默认排到第一位（MIN(sort_order) - 1，可能为负数）
 	res, err := s.db.Exec(`INSERT INTO domains(host, port, path, notes, created_at, sort_order)
-		VALUES(?,?,?,?,?, COALESCE((SELECT MAX(sort_order) FROM domains), -1) + 1)`,
+		VALUES(?,?,?,?,?, COALESCE((SELECT MIN(sort_order) FROM domains), 1) - 1)`,
 		host, port, normalizePath(path), nullableString(notes), nowUnix())
 	if err != nil {
 		return model.Domain{}, err
