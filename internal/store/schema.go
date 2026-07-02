@@ -78,7 +78,9 @@ SELECT id, host, port, notes, created_at,
        not_before, not_after, is_wildcard, days_remaining,
        last_checked, last_error
 FROM domains
-WHERE (? = '%%' OR host LIKE ? OR notes LIKE ?)
+WHERE (? = '%%' OR host LIKE ? OR notes LIKE ?)`
+
+const domainListOrderBy = `
 ORDER BY created_at DESC`
 
 const domainGetQuery = `

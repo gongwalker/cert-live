@@ -95,7 +95,15 @@ func (s *Server) handleMe(c *gin.Context) {
 
 func (s *Server) handleListDomains(c *gin.Context) {
 	search := c.Query("search")
-	domains, err := s.st.ListDomains(search)
+	// 支持 ?tag_ids=1&tag_ids=2&tag_ids=3（AND 关系）
+	tagIDStrs := c.QueryArray("tag_ids")
+	tagIDs := make([]int64, 0, len(tagIDStrs))
+	for _, s := range tagIDStrs {
+		if id, err := strconv.ParseInt(s, 10, 64); err == nil && id > 0 {
+			tagIDs = append(tagIDs, id)
+		}
+	}
+	domains, err := s.st.ListDomains(search, tagIDs)
 	if err != nil {
 		fail(c, http.StatusInternalServerError, err.Error())
 		return

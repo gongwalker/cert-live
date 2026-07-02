@@ -186,6 +186,48 @@ body {
 }
 .btn-primary:hover { box-shadow: 0 4px 14px rgba(64, 170, 255, 0.4); }
 
+/* ===== 工具栏标签筛选 ===== */
+.tag-filter {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+  font-size: 12px;
+}
+.tag-filter-label {
+  color: var(--text-muted);
+  margin-right: 4px;
+  flex-shrink: 0;
+}
+.filter-chip {
+  padding: 3px 9px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background .15s, border-color .15s, color .15s;
+}
+.filter-chip:hover {
+  color: var(--text-sub);
+  border-color: rgba(64, 158, 255, 0.4);
+}
+.filter-chip.active {
+  background: rgba(64, 158, 255, 0.22);
+  border-color: var(--accent);
+  color: #fff;
+}
+.filter-chip.active::before {
+  content: '\f00c';
+  font-family: 'Font Awesome 6 Free';
+  font-weight: 900;
+  margin-right: 4px;
+  font-size: 9px;
+}
+
 /* ===== 表格 ===== */
 .table-wrap {
   background: rgba(255, 255, 255, 0.03);

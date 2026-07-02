@@ -87,8 +87,33 @@ func (s *Store) GetUserByUsername(username string) (*model.User, error) {
 
 // ---------------- domains ----------------
 
-func (s *Store) ListDomains(search string) ([]model.Domain, error) {
-	rows, err := s.db.Query(domainListQuery, "%"+search+"%", "%"+search+"%", "%"+search+"%")
+// ListDomains 支持按多个标签 AND 过滤（域名必须同时拥有所有标签）
+func (s *Store) ListDomains(search string, tagIDs []int64) ([]model.Domain, error) {
+	q := domainListQuery
+	args := []any{"%" + search + "%", "%" + search + "%", "%" + search + "%"}
+
+	// 多标签 AND：用 GROUP BY + HAVING COUNT 实现
+	// 选了 N 个标签，域名的关联记录里至少 N 条匹配
+	if len(tagIDs) > 0 {
+		placeholders := ""
+		for i, id := range tagIDs {
+			if i > 0 {
+				placeholders += ","
+			}
+			placeholders += "?"
+			args = append(args, id)
+		}
+		q += ` AND id IN (
+			SELECT domain_id FROM domain_tags
+			WHERE tag_id IN (` + placeholders + `)
+			GROUP BY domain_id
+			HAVING COUNT(DISTINCT tag_id) = ?
+		)`
+		args = append(args, len(tagIDs))
+	}
+	q += domainListOrderBy
+
+	rows, err := s.db.Query(q, args...)
 	if err != nil {
 		return nil, err
 	}

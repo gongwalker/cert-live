@@ -5,6 +5,7 @@
   var state = {
     domains: [],
     search: '',
+    filterTagIDs: {},  // 多标签 AND 筛选
     page: 1,
     pageSize: 20,
     checkingIds: {} // 正在检测中的域名 id
@@ -145,6 +146,9 @@
   // ===== 加载 =====
   function loadDomains() {
     var url = '/api/domains?search=' + encodeURIComponent(state.search);
+    Object.keys(state.filterTagIDs).forEach(function (id) {
+      url += '&tag_ids=' + encodeURIComponent(id);
+    });
     $body.innerHTML = '<tr class="loading-row"><td colspan="6"><div class="spinner"></div></td></tr>';
     $empty.hidden = true;
     return api('GET', url).then(function (list) {
@@ -494,8 +498,43 @@
   function refreshAllTags() {
     return api('GET', '/api/tags').then(function (list) {
       allTags = list || [];
+      renderTagFilter();
     }).catch(function () {});
   }
+
+  // ===== 标签筛选（工具栏） =====
+  var $tagFilter = document.getElementById('tagFilter');
+
+  function renderTagFilter() {
+    if (!allTags.length) {
+      $tagFilter.hidden = true;
+      $tagFilter.innerHTML = '';
+      return;
+    }
+    $tagFilter.hidden = false;
+    var html = '<span class="tag-filter-label"><i class="fas fa-filter"></i> 标签筛选:</span>';
+    html += allTags.map(function (t) {
+      var active = state.filterTagIDs[t.id] ? ' active' : '';
+      return '<button type="button" class="filter-chip' + active + '" data-filter-tag-id="' + t.id + '">' +
+        escapeHTML(t.name) + '</button>';
+    }).join('');
+    $tagFilter.innerHTML = html;
+  }
+
+  $tagFilter.addEventListener('click', function (e) {
+    var chip = e.target.closest('.filter-chip');
+    if (!chip) return;
+    var id = parseInt(chip.getAttribute('data-filter-tag-id'), 10);
+    if (state.filterTagIDs[id]) {
+      delete state.filterTagIDs[id];
+      chip.classList.remove('active');
+    } else {
+      state.filterTagIDs[id] = true;
+      chip.classList.add('active');
+    }
+    state.page = 1;
+    loadDomains();
+  });
 
   function openDelete(id) {
     var d = state.domains.find(function (x) { return x.id === id; });
