@@ -14,6 +14,7 @@
   // ===== DOM 引用 =====
   var $body = document.getElementById('domainsBody');
   var $cardList = document.getElementById('cardList');
+  var $tableWrap = document.querySelector('.table-wrap');
   var $empty = document.getElementById('emptyState');
   var $count = document.getElementById('countBadge');
   var $search = document.getElementById('searchInput');
@@ -517,6 +518,8 @@
   });
 
   var draggedRow = null;
+  var autoScrollTimer = null;
+  var autoScrollDir = 0;   // -1 上滚 / 1 下滚 / 0 停
 
   $body.addEventListener('dragstart', function (e) {
     var row = e.target.closest('tr');
@@ -530,6 +533,21 @@
   $body.addEventListener('dragover', function (e) {
     if (!draggedRow) return;
     e.preventDefault();
+
+    // 1) 计算是否接近 .table-wrap 顶/底边缘 → 自动滚动
+    if ($tableWrap) {
+      var wrapRect = $tableWrap.getBoundingClientRect();
+      var margin = 60;
+      var speed = 12;
+      if (e.clientY < wrapRect.top + margin) {
+        startAutoScroll(-1, speed);
+      } else if (e.clientY > wrapRect.bottom - margin) {
+        startAutoScroll(1, speed);
+      } else {
+        stopAutoScroll();
+      }
+    }
+
     var targetRow = e.target.closest('tr');
     if (!targetRow || targetRow === draggedRow) return;
     // 清掉其他行的指示线
@@ -543,9 +561,24 @@
     targetRow.classList.add(isAbove ? 'dragover-above' : 'dragover-below');
   });
 
+  function startAutoScroll(dir, speed) {
+    if (autoScrollDir === dir) return;  // 已在同方向滚动，避免反复 clear/set 让 timer 拿不到 tick
+    stopAutoScroll();
+    autoScrollDir = dir;
+    autoScrollTimer = setInterval(function () {
+      $tableWrap.scrollTop += dir * speed;
+    }, 16);
+  }
+  function stopAutoScroll() {
+    if (autoScrollTimer) clearInterval(autoScrollTimer);
+    autoScrollTimer = null;
+    autoScrollDir = 0;
+  }
+
   $body.addEventListener('drop', function (e) {
     if (!draggedRow) return;
     e.preventDefault();
+    stopAutoScroll();
     var targetRow = e.target.closest('tr');
     if (targetRow && targetRow !== draggedRow) {
       var box = targetRow.getBoundingClientRect();
@@ -560,7 +593,10 @@
     cleanupDrag();
   });
 
-  $body.addEventListener('dragend', cleanupDrag);
+  $body.addEventListener('dragend', function () {
+    stopAutoScroll();
+    cleanupDrag();
+  });
 
   function cleanupDrag() {
     if (draggedRow) draggedRow.classList.remove('dragging');
