@@ -33,6 +33,7 @@ func (s *Server) routes() http.Handler {
 
 		api.GET("/domains", s.handleListDomains)
 		api.POST("/domains", s.handleCreateDomain)
+		api.PUT("/domains/reorder", s.handleReorderDomains)
 		api.PUT("/domains/:id", s.handleUpdateDomain)
 		api.DELETE("/domains/:id", s.handleDeleteDomain)
 		api.POST("/domains/:id/check", s.handleCheckDomain)

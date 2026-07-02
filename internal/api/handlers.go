@@ -224,6 +224,22 @@ func (s *Server) handleCheckAll(c *gin.Context) {
 	ok(c, gin.H{"triggered": true})
 }
 
+// 重排序域名：body {domain_ids: [3,1,2,4]}
+func (s *Server) handleReorderDomains(c *gin.Context) {
+	var req struct {
+		DomainIDs []int64 `json:"domain_ids"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || len(req.DomainIDs) == 0 {
+		fail(c, http.StatusBadRequest, "domain_ids 不能为空")
+		return
+	}
+	if err := s.st.ReorderDomains(req.DomainIDs); err != nil {
+		fail(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	ok(c, nil)
+}
+
 // ---------------- tags ----------------
 
 func (s *Server) handleListTags(c *gin.Context) {

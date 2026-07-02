@@ -185,15 +185,9 @@
   }
 
   // ===== 渲染 =====
+  // 不在前端做排序，直接用后端 sort_order 返回的顺序（用户可拖拽自定义）
   function filteredSorted() {
-    var list = state.domains.slice();
-    list.sort(function (a, b) {
-      // 异常 / 未检测 排最前；其次按剩余天数升序
-      var ax = a.last_error ? -1e9 : (a.days_remaining === 0 && !a.not_after ? -1e9 : a.days_remaining);
-      var bx = b.last_error ? -1e9 : (b.days_remaining === 0 && !b.not_after ? -1e9 : b.days_remaining);
-      return ax - bx;
-    });
-    return list;
+    return state.domains.slice();
   }
 
   function render() {
@@ -306,8 +300,14 @@
       '<button class="action-btn danger" data-action="delete" data-id="' + d.id + '" title="删除"><i class="fas fa-trash"></i></button>' +
       '</td>';
 
-    return '<tr data-id="' + d.id + '">' +
-      host + cert + expiry + checked + notes + actions +
+    // 拖拽手柄（仅在 PC 表格、无搜索/筛选时启用）
+    var canDrag = !state.search && Object.keys(state.filterTagIDs).length === 0;
+    var drag = '<td class="col-drag">' +
+      (canDrag ? '<span class="drag-handle" title="拖动排序"><i class="fas fa-grip-vertical"></i></span>' : '') +
+      '</td>';
+
+    return '<tr data-id="' + d.id + '"' + (canDrag ? ' draggable="false"' : '') + '>' +
+      drag + host + cert + expiry + checked + notes + actions +
       '</tr>';
   }
 
@@ -435,6 +435,92 @@
   }
   $body.addEventListener('click', onItemClicked);
   $cardList.addEventListener('click', onItemClicked);
+
+  // ===== 表格行拖拽排序（PC，仅在手柄上按下才允许拖）=====
+  // 用 mousedown 检测：手柄按下 → 给该行加 draggable=true；松开/离开 → 复位
+  // 这样表格内其他按钮（编辑/删除/检测）正常点击不被影响
+  $body.addEventListener('mousedown', function (e) {
+    var row = e.target.closest('tr');
+    if (!row || !row.dataset.id) return;
+    row.draggable = !!e.target.closest('.drag-handle');
+  });
+  $body.addEventListener('mouseup', function (e) {
+    var row = e.target.closest('tr');
+    if (row) row.draggable = false;
+  });
+
+  var draggedRow = null;
+
+  $body.addEventListener('dragstart', function (e) {
+    var row = e.target.closest('tr');
+    if (!row || !row.draggable) return;
+    draggedRow = row;
+    setTimeout(function () { row.classList.add('dragging'); }, 0);
+    e.dataTransfer.effectAllowed = 'move';
+    try { e.dataTransfer.setData('text/plain', row.dataset.id); } catch (_) {}
+  });
+
+  $body.addEventListener('dragover', function (e) {
+    if (!draggedRow) return;
+    e.preventDefault();
+    var targetRow = e.target.closest('tr');
+    if (!targetRow || targetRow === draggedRow) return;
+    // 清掉其他行的指示线
+    var allRows = $body.querySelectorAll('tr');
+    for (var i = 0; i < allRows.length; i++) {
+      allRows[i].classList.remove('dragover-above', 'dragover-below');
+    }
+    // 判定鼠标在目标行的上半还是下半
+    var box = targetRow.getBoundingClientRect();
+    var isAbove = (e.clientY - box.top) < box.height / 2;
+    targetRow.classList.add(isAbove ? 'dragover-above' : 'dragover-below');
+  });
+
+  $body.addEventListener('drop', function (e) {
+    if (!draggedRow) return;
+    e.preventDefault();
+    var targetRow = e.target.closest('tr');
+    if (targetRow && targetRow !== draggedRow) {
+      var box = targetRow.getBoundingClientRect();
+      var isAbove = (e.clientY - box.top) < box.height / 2;
+      if (isAbove) {
+        $body.insertBefore(draggedRow, targetRow);
+      } else {
+        $body.insertBefore(draggedRow, targetRow.nextSibling);
+      }
+      saveDomainOrder();
+    }
+    cleanupDrag();
+  });
+
+  $body.addEventListener('dragend', cleanupDrag);
+
+  function cleanupDrag() {
+    if (draggedRow) draggedRow.classList.remove('dragging');
+    draggedRow = null;
+    var allRows = $body.querySelectorAll('tr');
+    for (var i = 0; i < allRows.length; i++) {
+      allRows[i].classList.remove('dragover-above', 'dragover-below');
+    }
+  }
+
+  function saveDomainOrder() {
+    var rows = $body.querySelectorAll('tr[data-id]');
+    var ids = [];
+    for (var i = 0; i < rows.length; i++) {
+      ids.push(parseInt(rows[i].getAttribute('data-id'), 10));
+    }
+    api('PUT', '/api/domains/reorder', { domain_ids: ids }).then(function () {
+      toast('排序已保存', 'success');
+      // 更新 state 顺序，避免下次 render 用旧顺序
+      state.domains.sort(function (a, b) {
+        return ids.indexOf(a.id) - ids.indexOf(b.id);
+      });
+    }).catch(function (err) {
+      toast('排序失败：' + err.message, 'error');
+      loadDomains();  // 失败时重拉，恢复服务端顺序
+    });
+  }
 
   // SAN 列表弹窗
   var $sanListTitle = document.getElementById('sanListTitle');

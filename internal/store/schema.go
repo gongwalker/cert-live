@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS domains (
   port INTEGER NOT NULL DEFAULT 443,
   notes TEXT,
   created_at INTEGER NOT NULL,
+  sort_order INTEGER NOT NULL DEFAULT 0,
   -- 探测结果（首次成功探测后填充；NULL 表示尚未探测）
   subject TEXT,
   issuer TEXT,
@@ -43,6 +44,7 @@ CREATE TABLE IF NOT EXISTS domains (
 );
 CREATE INDEX IF NOT EXISTS idx_domains_host ON domains(host);
 CREATE INDEX IF NOT EXISTS idx_domains_not_after ON domains(not_after);
+-- idx_domains_sort 在 EnsureSchema 的 ALTER 迁移之后创建，避免老库迁移前缺列报错
 
 CREATE TABLE IF NOT EXISTS alert_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -84,7 +86,7 @@ FROM domains
 WHERE (? = '%%' OR host LIKE ? OR notes LIKE ?)`
 
 const domainListOrderBy = `
-ORDER BY created_at DESC`
+ORDER BY sort_order ASC, id ASC`
 
 const domainGetQuery = `
 SELECT id, host, port, notes, created_at,

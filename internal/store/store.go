@@ -50,6 +50,10 @@ func (s *Store) EnsureSchema() error {
 	_, _ = s.db.Exec(`ALTER TABLE tags ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0`)
 	_, _ = s.db.Exec(`ALTER TABLE tags ADD COLUMN icon TEXT`)
 	_, _ = s.db.Exec(`ALTER TABLE tags ADD COLUMN color TEXT`)
+	// 老库迁移：补 domains.sort_order 列
+	_, _ = s.db.Exec(`ALTER TABLE domains ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0`)
+	// 迁移完成后才能建这个索引（依赖 sort_order 列）
+	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_domains_sort ON domains(sort_order)`)
 	for k, v := range map[string]string{
 		"alert_tiers":    "[30,7,1]",
 		"check_interval": "360",
@@ -166,7 +170,9 @@ func (s *Store) GetDomain(id int64) (*model.Domain, error) {
 }
 
 func (s *Store) CreateDomain(host string, port int, notes string, tagIDs []int64) (model.Domain, error) {
-	res, err := s.db.Exec(`INSERT INTO domains(host, port, notes, created_at) VALUES(?,?,?,?)`,
+	// 新域名默认排到最后
+	res, err := s.db.Exec(`INSERT INTO domains(host, port, notes, created_at, sort_order)
+		VALUES(?,?,?,?, COALESCE((SELECT MAX(sort_order) FROM domains), -1) + 1)`,
 		host, port, nullableString(notes), nowUnix())
 	if err != nil {
 		return model.Domain{}, err
@@ -176,6 +182,21 @@ func (s *Store) CreateDomain(host string, port int, notes string, tagIDs []int64
 		return model.Domain{}, err
 	}
 	return model.Domain{ID: id, Host: host, Port: port, Notes: notes, CreatedAt: nowUnix()}, nil
+}
+
+// ReorderDomains 按 orderedIDs 顺序批量更新 sort_order
+func (s *Store) ReorderDomains(orderedIDs []int64) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for i, id := range orderedIDs {
+		if _, err := tx.Exec(`UPDATE domains SET sort_order=? WHERE id=?`, i, id); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // UpdateDomain 更新用户可编辑字段（host/port/notes/tags），不触碰探测结果
