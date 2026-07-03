@@ -41,13 +41,14 @@ func Open(path string) (*Store, error) {
 
 func (s *Store) Close() error { return s.db.Close() }
 
+// EnsureSchema 把 schema 常量里的 DDL 全部跑一遍：
+//   - 已存在的表/索引：IF NOT EXISTS 跳过
+//   - 不存在的新建
+//   - 废弃的表（schema 末尾的 DROP 语句）直接 drop
+// 不做任何 ALTER 迁移 —— 字段调整请改 schema 后删 data/certlive.db 重来。
 func (s *Store) EnsureSchema() error {
 	_, err := s.db.Exec(schema)
-	if err != nil {
-		return err
-	}
-	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_domains_sort ON domains(sort_order)`)
-	return nil
+	return err
 }
 
 // EnsureLogin 首次启动 seed：settings 表里没有 login_user 时写入账号 + bcrypt 哈希。

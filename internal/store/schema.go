@@ -11,8 +11,9 @@ import (
 	"cert-live/internal/model"
 )
 
-// schema 库结构：users / domains（含探测结果）/ settings / tags / domain_tags
-// - 1 条域名 1 行，最近一次证书 / HTTP 探测结果就并在这行上
+// schema 是数据库结构的唯一真相：所有表 + 索引都在这里声明。
+// EnsureSchema 跑一遍这段 DDL 就完事。不做迁移、不写 ALTER、不 DROP ——
+// 老库要升级就删 data/certlive.db 重来。
 const schema = `
 CREATE TABLE IF NOT EXISTS domains (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -41,7 +42,7 @@ CREATE TABLE IF NOT EXISTS domains (
 );
 CREATE INDEX IF NOT EXISTS idx_domains_host ON domains(host);
 CREATE INDEX IF NOT EXISTS idx_domains_not_after ON domains(not_after);
--- idx_domains_sort 在 EnsureSchema 的 ALTER 迁移之后创建，避免老库迁移前缺列报错
+CREATE INDEX IF NOT EXISTS idx_domains_sort ON domains(sort_order);
 
 CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
