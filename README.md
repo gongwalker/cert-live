@@ -102,6 +102,20 @@ make status      # 查看运行状态
 
 浏览器打开 `http://localhost:8080`，用 `.env` 里设置的管理员账密登录。
 
+### 修改账号 / 密码
+
+`.env` 里的 `ADMIN_USER` / `ADMIN_PASS` 只在首次启动时 seed 一次，之后改密码不生效。要改账号密码用专用子命令：
+
+```bash
+# 交互式（推荐，密码不回显）
+./cert-live reset-admin
+
+# 非交互式（脚本/CI 用）
+./cert-live reset-admin <新账号> <新密码>
+```
+
+子命令直接读写 `data/certlive.db` 的 `settings` 表，不启动服务，跑完即退出。
+
 ### 3. 配置通知推送
 
 登录后点右上角齿轮 → **设置 → 通知管理**：
@@ -154,8 +168,8 @@ make status      # 查看运行状态
 | `APP_PORT` | `8080` | 监听端口 |
 | `GIN_MODE` | `debug` | gin 模式：`debug` / `release` |
 | `SESSION_SECRET` | 必填 | cookie 签名密钥 |
-| `ADMIN_USER` | `admin` | 首次启动写入的管理员账号 |
-| `ADMIN_PASS` | 必填 | 首次启动写入的管理员密码 |
+| `ADMIN_USER` | `admin` | 首次启动 seed 进 settings 的管理员账号（仅一次） |
+| `ADMIN_PASS` | 必填 | 首次启动 seed 进 settings 的管理员密码（bcrypt 哈希存） |
 | `DB_PATH` | `./data/certlive.db` | SQLite 文件路径 |
 
 通知设置（存在 `settings` 表，UI 配置，全部以 `notify_` 前缀）：
@@ -194,10 +208,9 @@ make status      # 查看运行状态
 
 ## 数据模型
 
-- `users` — 登录账号
 - `domains` — 域名 + 最近一次证书/HTTP 探测结果
 - `tags` / `domain_tags` — 标签 + 多对多关联
-- `settings` — KV 配置（`key` TEXT PK, `value` TEXT）
+- `settings` — KV 配置（`key` TEXT PK, `value` TEXT）。除了通知配置，**登录账号也存这里**：`login_user` = 用户名、`login_password` = bcrypt 哈希
 
 ## License
 

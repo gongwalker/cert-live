@@ -1,11 +1,5 @@
 package model
 
-type User struct {
-	ID           int64  `json:"id"`
-	Username     string `json:"username"`
-	PasswordHash string `json:"-"`
-}
-
 // Tag 标签（独立实体，目前不与 domains 关联，后续可扩展）
 type Tag struct {
 	ID    int64  `json:"id"`

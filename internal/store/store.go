@@ -50,34 +50,47 @@ func (s *Store) EnsureSchema() error {
 	return nil
 }
 
-func (s *Store) EnsureAdmin(username, password string) error {
-	var n int
-	if err := s.db.QueryRow(`SELECT COUNT(1) FROM users`).Scan(&n); err != nil {
+// EnsureLogin 首次启动 seed：settings 表里没有 login_user 时写入账号 + bcrypt 哈希。
+// 之后改密码只能通过 settings 接口（或直接动 DB），不再读 .env。
+func (s *Store) EnsureLogin(username, password string) error {
+	existing, err := s.GetSetting("login_user")
+	if err != nil {
 		return err
 	}
-	if n > 0 {
-		return nil
+	if existing != "" {
+		return nil // 已经 seed 过了
 	}
 	hash, err := auth.HashPassword(password)
 	if err != nil {
 		return err
 	}
-	_, err = s.db.Exec(`INSERT INTO users(username, password_hash, created_at) VALUES(?,?,?)`,
-		username, hash, nowUnix())
-	return err
+	if err := s.SetSetting("login_user", username); err != nil {
+		return err
+	}
+	return s.SetSetting("login_password", hash)
 }
 
-func (s *Store) GetUserByUsername(username string) (*model.User, error) {
-	u := &model.User{}
-	err := s.db.QueryRow(`SELECT id, username, password_hash FROM users WHERE username=?`, username).
-		Scan(&u.ID, &u.Username, &u.PasswordHash)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
-	}
+// GetLoginCredentials 取出当前登录账号 + 密码哈希。账号不存在时返回空串。
+func (s *Store) GetLoginCredentials() (username, passwordHash string, err error) {
+	username, err = s.GetSetting("login_user")
 	if err != nil {
-		return nil, err
+		return "", "", err
 	}
-	return u, nil
+	passwordHash, err = s.GetSetting("login_password")
+	if err != nil {
+		return "", "", err
+	}
+	return username, passwordHash, nil
+}
+
+// GetSetting 单 key 读取。
+func (s *Store) GetSetting(key string) (string, error) {
+	var v string
+	err := s.db.QueryRow(`SELECT value FROM settings WHERE key=?`, key).Scan(&v)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return v, err
 }
 
 // ---------------- domains ----------------

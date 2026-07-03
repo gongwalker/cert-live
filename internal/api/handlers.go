@@ -68,17 +68,19 @@ func (s *Server) LoginSubmit(c *gin.Context) {
 
 	user := c.PostForm("username")
 	pass := c.PostForm("password")
-	u, err := s.st.GetUserByUsername(user)
+	storedUser, storedHash, err := s.st.GetLoginCredentials()
 	if err != nil {
 		fail(c, http.StatusInternalServerError, "数据库错误")
 		return
 	}
-	if u == nil || auth.CheckPassword(u.PasswordHash, pass) != nil {
+	// 用户名不存在 / 哈希为空 / 密码不匹配，统一报「用户名或密码错误」避免账号枚举
+	if storedUser == "" || storedHash == "" || user != storedUser ||
+		auth.CheckPassword(storedHash, pass) != nil {
 		fail(c, http.StatusUnauthorized, "用户名或密码错误")
 		return
 	}
-	auth.SetLogin(c, u.Username)
-	ok(c, gin.H{"username": u.Username})
+	auth.SetLogin(c, storedUser)
+	ok(c, gin.H{"username": storedUser})
 }
 
 // Logout 清除登录态

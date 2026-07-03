@@ -14,13 +14,6 @@ import (
 // schema 库结构：users / domains（含探测结果）/ settings / tags / domain_tags
 // - 1 条域名 1 行，最近一次证书 / HTTP 探测结果就并在这行上
 const schema = `
-CREATE TABLE IF NOT EXISTS users (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  username TEXT UNIQUE NOT NULL,
-  password_hash TEXT NOT NULL,
-  created_at INTEGER NOT NULL
-);
-
 CREATE TABLE IF NOT EXISTS domains (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   host TEXT NOT NULL,

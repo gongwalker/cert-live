@@ -3,7 +3,7 @@ PORT     := 8080
 PID_FILE := .run/$(APP).pid
 LOG_FILE := logs/app.log
 
-.PHONY: help build run start stop restart status clean tidy
+.PHONY: help build run start stop restart status clean tidy reset-admin
 
 help: ## 显示帮助
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -54,3 +54,11 @@ clean: ## 清理编译产物和运行时文件
 
 tidy: ## 整理依赖
 	go mod tidy
+
+reset-admin: ## 重置登录账号 / 密码（交互式；非交互式用 make reset-admin A="user pass"）
+	@if [ -x $(APP) ]; then \
+		./$(APP) reset-admin $(A); \
+	else \
+		echo "二进制 $(APP) 不存在，请先 make build"; \
+		exit 1; \
+	fi

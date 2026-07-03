@@ -2,26 +2,38 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
+	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"cert-live/internal/api"
 	"cert-live/internal/auth"
 	"cert-live/internal/config"
 	"cert-live/internal/store"
+
+	"golang.org/x/term"
 )
 
 func main() {
+	// 子命令：reset-admin 用于改登录账号 / 密码，不启动服务
+	if len(os.Args) > 1 && os.Args[1] == "reset-admin" {
+		runResetAdmin(os.Args[2:])
+		return
+	}
+	runServer()
+}
+
+// runServer 正常启动服务（原 main 逻辑）。
+func runServer() {
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatalf("config: %v", err)
 	}
-
-	// 注入 cookie 签名密钥
 	auth.Configure(cfg.SessionKey)
 
-	// 打开数据库、初始化 schema、首次启动写入管理员
 	st, err := store.Open(cfg.DBPath)
 	if err != nil {
 		log.Fatalf("open store: %v", err)
@@ -31,8 +43,8 @@ func main() {
 	if err := st.EnsureSchema(); err != nil {
 		log.Fatalf("ensure schema: %v", err)
 	}
-	if err := st.EnsureAdmin(cfg.AdminUser, cfg.AdminPass); err != nil {
-		log.Fatalf("ensure admin: %v", err)
+	if err := st.EnsureLogin(cfg.AdminUser, cfg.AdminPass); err != nil {
+		log.Fatalf("ensure login: %v", err)
 	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -46,4 +58,120 @@ func main() {
 	if err := srv.Run(":" + cfg.AppPort); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// runResetAdmin 子命令：重置登录账号和密码。
+//
+//	./cert-live reset-admin                 # 交互式：提示输入
+//	./cert-live reset-admin <user> <pass>   # 非交互式：直接传
+func runResetAdmin(args []string) {
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("config: %v", err)
+	}
+
+	st, err := store.Open(cfg.DBPath)
+	if err != nil {
+		log.Fatalf("open store: %v", err)
+	}
+	defer st.Close()
+	if err := st.EnsureSchema(); err != nil {
+		log.Fatalf("ensure schema: %v", err)
+	}
+
+	var user, pass string
+	switch len(args) {
+	case 0:
+		// 交互式：密码不回显（term.ReadPassword 内部处理，不动 raw 模式）
+		fmt.Print("新账号: ")
+		fmt.Scanln(&user)
+		if strings.TrimSpace(user) == "" {
+			log.Fatalf("账号不能为空")
+		}
+		p1, err := readPasswordSilent("新密码: ")
+		if err != nil {
+			log.Fatalf("读取密码失败: %v", err)
+		}
+		p2, err := readPasswordSilent("确认密码: ")
+		if err != nil {
+			log.Fatalf("读取密码失败: %v", err)
+		}
+		if p1 != p2 {
+			log.Fatalf("两次输入的密码不一致")
+		}
+		user = strings.TrimSpace(user)
+		pass = p1
+	case 2:
+		user = strings.TrimSpace(args[0])
+		pass = args[1]
+	default:
+		fmt.Fprintln(os.Stderr, "用法:")
+		fmt.Fprintln(os.Stderr, "  交互式:    ./cert-live reset-admin")
+		fmt.Fprintln(os.Stderr, "  非交互式:  ./cert-live reset-admin <user> <pass>")
+		os.Exit(2)
+	}
+	if user == "" || pass == "" {
+		log.Fatalf("账号和密码都不能为空")
+	}
+	if err := validateCredentials(user, pass); err != nil {
+		log.Fatalf("校验失败: %v", err)
+	}
+
+	hash, err := auth.HashPassword(pass)
+	if err != nil {
+		log.Fatalf("哈希失败: %v", err)
+	}
+	if err := st.SetSetting("login_user", user); err != nil {
+		log.Fatalf("写入账号失败: %v", err)
+	}
+	if err := st.SetSetting("login_password", hash); err != nil {
+		log.Fatalf("写入密码失败: %v", err)
+	}
+	fmt.Printf("已重置: 账号=%s（bcrypt 哈希已存）\n", user)
+}
+
+// validateCredentials 校验账号密码复杂度：
+//   - 账号 ≥ 5 字符；密码 ≥ 6 字符
+//   - 只允许可打印 ASCII（0x20~0x7E），拒绝汉字、emoji、控制字符
+func validateCredentials(user, pass string) error {
+	if len([]rune(user)) < 5 {
+		return fmt.Errorf("账号长度不能少于 5 个字符")
+	}
+	if len([]rune(pass)) < 6 {
+		return fmt.Errorf("密码长度不能少于 6 个字符")
+	}
+	if !isPrintableASCII(user) {
+		return fmt.Errorf("账号只能包含英文字母、数字、英文符号（不能有汉字 / emoji）")
+	}
+	if !isPrintableASCII(pass) {
+		return fmt.Errorf("密码只能包含英文字母、数字、英文符号（不能有汉字 / emoji）")
+	}
+	return nil
+}
+
+// isPrintableASCII 检查字符串是否全部落在可打印 ASCII 范围 (0x20 ~ 0x7E)。
+func isPrintableASCII(s string) bool {
+	for _, r := range s {
+		if r < 0x20 || r > 0x7E {
+			return false
+		}
+	}
+	return true
+}
+
+// readPasswordSilent 提示并静默读取密码（不回显）。
+// 用 term.ReadPassword，不进 raw 模式，终端永远不可能卡死。
+// 非 TTY（管道 / 重定向）退化为按行读。
+func readPasswordSilent(prompt string) (string, error) {
+	fmt.Print(prompt)
+	fd := int(os.Stdin.Fd())
+	if !term.IsTerminal(fd) {
+		// 非 TTY：按行读
+		var s string
+		_, err := fmt.Scanln(&s)
+		return s, err
+	}
+	b, err := term.ReadPassword(fd)
+	fmt.Println()
+	return string(b), err
 }
