@@ -1,110 +1,172 @@
+// Package notify 实现证书到期 / HTTP 异常 的消息推送。
+//
+// 推送目标支持飞书和企业微信群机器人，二选一（由 Settings.NotifyChannel 决定）。
+// 推送内容支持 text / markdown 两种格式，模板里可用 {$host} {$url} 等占位符。
+//
+// 频率限制（官方文档）：
+//   企业微信：20 条 / 分钟
+//   飞书：100 次 / 分钟，且 5 次 / 秒
+//
+// 限制策略：每次发送前按平台睡眠（feishu 600ms、wecom 3s），失败按 1s/2s/4s 退避重试 3 次。
 package notify
 
 import (
 	"bytes"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
-	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
+type Platform string
+
+const (
+	Feishu Platform = "feishu"
+	WeCom  Platform = "wecom"
+)
+
+// Channel 单次推送目标。一个 Channel 对应一个平台 + 一个 Webhook。
 type Channel struct {
-	FeishuWebhook string
-	FeishuSecret  string
-	WeComWebhook  string
+	Platform Platform
+	Webhook  string
+	Format   string // "text" | "markdown"
 }
 
-type Alert struct {
-	Host        string
-	DaysLeft    int
-	NotAfter    time.Time
-	Subject     string
-	Issuer      string
-	Tier        int
-	IsExpired   bool
+// Vars 模板渲染时替换的变量集合。零值字段会被替换成空串。
+type Vars struct {
+	Host       string
+	URL        string
+	Notes      string
+	Tags       string
+	Days       string
+	HTTPStatus string
+	Subject    string
+	Issuer     string
+	ExpireDate string
+	Time       string
 }
 
-// Send dispatches a single consolidated message to every configured channel.
-// Each channel's error is returned independently so a dead bot doesn't block others.
-func (c Channel) Send(alerts []Alert) []error {
-	if len(alerts) == 0 {
-		return nil
+var (
+	// 全局发送锁 + 上次发送时间，保证全局速率限制（多 goroutine 共用）
+	sendMu       sync.Mutex
+	lastSendAt   time.Time
+	rateLimitGap = map[Platform]time.Duration{
+		Feishu: 600 * time.Millisecond, // 100/min → 600ms/条
+		WeCom:  3 * time.Second,        // 20/min  → 3s/条
 	}
-	text := buildText(alerts)
-	var errs []error
-	if c.FeishuWebhook != "" {
-		if err := postJSON(c.FeishuWebhook, feishuPayload(c.FeishuSecret, text)); err != nil {
-			errs = append(errs, fmt.Errorf("feishu: %w", err))
-		}
+)
+
+// Render 把模板里的 {$xxx} 替换成 vars 对应字段。
+func Render(tmpl string, v Vars) string {
+	repl := map[string]string{
+		"{$host}":        v.Host,
+		"{$url}":         v.URL,
+		"{$notes}":       v.Notes,
+		"{$tags}":        v.Tags,
+		"{$days}":        v.Days,
+		"{$http_status}": v.HTTPStatus,
+		"{$subject}":     v.Subject,
+		"{$issuer}":      v.Issuer,
+		"{$expire_date}": v.ExpireDate,
+		"{$time}":        v.Time,
 	}
-	if c.WeComWebhook != "" {
-		if err := postJSON(c.WeComWebhook, wecomPayload(text)); err != nil {
-			errs = append(errs, fmt.Errorf("wecom: %w", err))
-		}
+	out := tmpl
+	for k, val := range repl {
+		out = strings.ReplaceAll(out, k, val)
 	}
-	return errs
+	return out
 }
 
-func buildText(alerts []Alert) string {
-	var b strings.Builder
-	now := time.Now()
-	b.WriteString("SSL 证书过期告警\n")
-	b.WriteString("时间: " + now.Format("2006-01-02 15:04") + "\n")
-	b.WriteString("数量: " + strconv.Itoa(len(alerts)) + "\n")
-	b.WriteString("------------------------\n")
-	for _, a := range alerts {
-		tag := fmt.Sprintf("剩余 %d 天", a.DaysLeft)
-		if a.IsExpired {
-			tag = "已过期"
-		}
-		fmt.Fprintf(&b, "• %s  [%s]\n", a.Host, tag)
-		fmt.Fprintf(&b, "  到期: %s\n", a.NotAfter.Format("2006-01-02"))
-		if a.Subject != "" {
-			fmt.Fprintf(&b, "  主体: %s\n", a.Subject)
-		}
-		if a.Issuer != "" {
-			fmt.Fprintf(&b, "  签发: %s\n", a.Issuer)
-		}
-		fmt.Fprintf(&b, "  触发阈值: %d 天\n\n", a.Tier)
+// Send 渲染并发送一次推送。返回最后一次错误（成功返回 nil）。
+//
+// 流程：渲染 → 平台 payload → 限速等待 → POST → 失败按 1s/2s/4s 退避重试，最多 3 次。
+func (c Channel) Send(text string) error {
+	if c.Webhook == "" {
+		return fmt.Errorf("webhook 为空，跳过发送")
 	}
-	b.WriteString("— CertLive 证活")
-	return b.String()
+	payload, err := c.buildPayload(text)
+	if err != nil {
+		return err
+	}
+
+	backoffs := []time.Duration{1 * time.Second, 2 * time.Second, 4 * time.Second}
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			time.Sleep(backoffs[attempt-1])
+		}
+		waitRateLimit(c.Platform)
+		err := postJSON(c.Webhook, payload)
+		if err == nil {
+			return nil
+		}
+		lastErr = err
+		// 平台返回的业务错误（errcode != 0）也视作失败重试
+	}
+	return fmt.Errorf("重试 3 次仍失败: %w", lastErr)
 }
 
-func feishuPayload(secret, text string) []byte {
-	body := map[string]any{
+// buildPayload 根据平台 + 格式生成请求体字节串。
+func (c Channel) buildPayload(text string) ([]byte, error) {
+	switch c.Platform {
+	case Feishu:
+		return feishuPayload(c.Format, text)
+	case WeCom:
+		return wecomPayload(c.Format, text)
+	}
+	return nil, fmt.Errorf("未知平台: %s", c.Platform)
+}
+
+func feishuPayload(format, text string) ([]byte, error) {
+	if format == "markdown" {
+		return json.Marshal(map[string]any{
+			"msg_type": "interactive",
+			"card": map[string]any{
+				"elements": []map[string]any{
+					{"tag": "markdown", "content": text},
+				},
+			},
+		})
+	}
+	return json.Marshal(map[string]any{
 		"msg_type": "text",
 		"content":  map[string]string{"text": text},
-	}
-	if secret != "" {
-		ts, sign := feishuSign(secret)
-		body["timestamp"] = ts
-		body["sign"] = sign
-	}
-	b, _ := json.Marshal(body)
-	return b
+	})
 }
 
-func feishuSign(secret string) (string, string) {
-	ts := strconv.FormatInt(time.Now().Unix(), 10)
-	stringToSign := ts + "\n" + secret
-	mac := hmac.New(sha256.New, []byte(stringToSign))
-	mac.Write(nil)
-	sign := base64.StdEncoding.EncodeToString(mac.Sum(nil))
-	return ts, sign
-}
-
-func wecomPayload(text string) []byte {
-	b, _ := json.Marshal(map[string]any{
+func wecomPayload(format, text string) ([]byte, error) {
+	if format == "markdown" {
+		return json.Marshal(map[string]any{
+			"msgtype": "markdown",
+			"markdown": map[string]string{
+				"content": text,
+			},
+		})
+	}
+	return json.Marshal(map[string]any{
 		"msgtype": "text",
 		"text":    map[string]string{"content": text},
 	})
-	return b
+}
+
+// waitRateLimit 阻塞到满足平台速率窗口（全局锁内执行）。
+func waitRateLimit(p Platform) {
+	sendMu.Lock()
+	defer sendMu.Unlock()
+	gap := rateLimitGap[p]
+	if gap == 0 {
+		gap = time.Second
+	}
+	if !lastSendAt.IsZero() {
+		wait := gap - time.Since(lastSendAt)
+		if wait > 0 {
+			time.Sleep(wait)
+		}
+	}
+	lastSendAt = time.Now()
 }
 
 func postJSON(url string, body []byte) error {
@@ -114,8 +176,35 @@ func postJSON(url string, body []byte) error {
 		return err
 	}
 	defer resp.Body.Close()
+	respBody, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode >= 300 {
-		return fmt.Errorf("status %d", resp.StatusCode)
+		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, truncate(string(respBody), 200))
+	}
+	// 平台业务错误码：飞书 errcode!=0、企业微信 errcode!=0
+	if errCode := extractErrCode(respBody); errCode != 0 {
+		return fmt.Errorf("平台返回 errcode=%d: %s", errCode, truncate(string(respBody), 200))
 	}
 	return nil
+}
+
+// extractErrCode 从响应里抠 errcode 字段（飞书/企业微信都用这个字段名）。
+func extractErrCode(body []byte) int {
+	var m struct {
+		ErrCode int `json:"errcode"`
+		Code    int `json:"code"` // 飞书某些接口用 code
+	}
+	if json.Unmarshal(body, &m) != nil {
+		return 0
+	}
+	if m.ErrCode != 0 {
+		return m.ErrCode
+	}
+	return m.Code
+}
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "..."
 }

@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -367,56 +366,86 @@ func (s *Server) handleGetSettings(c *gin.Context) {
 	}
 	def := model.DefaultSettings()
 	out := gin.H{
-		"feishu_webhook":  m["feishu_webhook"],
-		"feishu_secret":   m["feishu_secret"],
-		"wecom_webhook":   m["wecom_webhook"],
-		"alert_tiers":     def.AlertTiersJSON,
-		"check_interval":  def.CheckIntervalMin,
-	}
-	if v, ok := m["alert_tiers"]; ok {
-		out["alert_tiers"] = v
-	}
-	if v, ok := m["check_interval"]; ok && v != "" {
-		out["check_interval"] = v
+		"notify_channel":         getStr(m, "notify_channel", def.NotifyChannel),
+		"notify_feishu_webhook":  getStr(m, "notify_feishu_webhook", def.NotifyFeishuWebhook),
+		"notify_feishu_format":   getStr(m, "notify_feishu_format", def.NotifyFeishuFormat),
+		"notify_feishu_text":     getStr(m, "notify_feishu_text", def.NotifyFeishuText),
+		"notify_wecom_webhook":   getStr(m, "notify_wecom_webhook", def.NotifyWeComWebhook),
+		"notify_wecom_format":    getStr(m, "notify_wecom_format", def.NotifyWeComFormat),
+		"notify_wecom_text":      getStr(m, "notify_wecom_text", def.NotifyWeComText),
+		"notify_cond_a_enabled":  getStr(m, "notify_cond_a_enabled", boolStr(def.NotifyCondAEnabled)),
+		"notify_cond_a_days":     getStr(m, "notify_cond_a_days", strconv.Itoa(def.NotifyCondADays)),
+		"notify_cond_b_enabled":  getStr(m, "notify_cond_b_enabled", boolStr(def.NotifyCondBEnabled)),
+		"notify_cond_b_codes":    getStr(m, "notify_cond_b_codes", def.NotifyCondBCodes),
+		"check_interval":         getStr(m, "check_interval", strconv.Itoa(def.CheckIntervalMin)),
 	}
 	ok(c, out)
 }
 
-func (s *Server) handleUpdateSettings(c *gin.Context) {
-	var req struct {
-		FeishuWebhook string `json:"feishu_webhook"`
-		FeishuSecret  string `json:"feishu_secret"`
-		WeComWebhook  string `json:"wecom_webhook"`
-		AlertTiers    any    `json:"alert_tiers"`
-		CheckInterval any    `json:"check_interval"`
+func getStr(m map[string]string, key, def string) string {
+	if v, ok := m[key]; ok && v != "" {
+		return v
 	}
+	return def
+}
+
+func boolStr(b bool) string {
+	if b {
+		return "true"
+	}
+	return "false"
+}
+
+func (s *Server) handleUpdateSettings(c *gin.Context) {
+	var req map[string]any
 	if err := c.ShouldBindJSON(&req); err != nil {
 		fail(c, http.StatusBadRequest, "请求体格式错误")
 		return
 	}
-	setting := map[string]string{
-		"feishu_webhook": req.FeishuWebhook,
-		"feishu_secret":  req.FeishuSecret,
-		"wecom_webhook":  req.WeComWebhook,
+	// 允许的字段白名单 + 类型归一化（全部以字符串存进 settings 表）
+	allowed := map[string]string{
+		"notify_channel":        "string",
+		"notify_feishu_webhook": "string",
+		"notify_feishu_format":  "string",
+		"notify_feishu_text":    "string",
+		"notify_wecom_webhook":  "string",
+		"notify_wecom_format":   "string",
+		"notify_wecom_text":     "string",
+		"notify_cond_a_enabled": "bool",
+		"notify_cond_a_days":    "int",
+		"notify_cond_b_enabled": "bool",
+		"notify_cond_b_codes":   "string",
+		"check_interval":        "int",
 	}
-	switch v := req.AlertTiers.(type) {
-	case string:
-		setting["alert_tiers"] = v
-	case []any:
-		setting["alert_tiers"] = jsonCompact(v)
-	default:
-		setting["alert_tiers"] = "[30,7,1]"
-	}
-	switch v := req.CheckInterval.(type) {
-	case float64:
-		if v > 0 {
-			setting["check_interval"] = strconv.Itoa(int(v))
+	for key, kind := range allowed {
+		raw, ok := req[key]
+		if !ok {
+			continue
 		}
-	case string:
-		setting["check_interval"] = v
-	}
-	for k, v := range setting {
-		if err := s.st.SetSetting(k, v); err != nil {
+		var val string
+		switch kind {
+		case "string":
+			if s, ok := raw.(string); ok {
+				val = s
+			} else {
+				continue
+			}
+		case "bool":
+			if b, ok := raw.(bool); ok {
+				val = boolStr(b)
+			} else {
+				continue
+			}
+		case "int":
+			if f, ok := raw.(float64); ok {
+				val = strconv.Itoa(int(f))
+			} else if s, ok := raw.(string); ok {
+				val = s
+			} else {
+				continue
+			}
+		}
+		if err := s.st.SetSetting(key, val); err != nil {
 			fail(c, http.StatusInternalServerError, err.Error())
 			return
 		}
@@ -463,12 +492,4 @@ func (s *Server) handleRestore(c *gin.Context) {
 		return
 	}
 	ok(c, gin.H{"restored": true})
-}
-
-func jsonCompact(v any) string {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return "[30,7,1]"
-	}
-	return string(b)
 }

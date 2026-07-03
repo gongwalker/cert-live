@@ -1,7 +1,5 @@
 package model
 
-import "encoding/json"
-
 type User struct {
 	ID           int64  `json:"id"`
 	Username     string `json:"username"`
@@ -47,35 +45,66 @@ type Domain struct {
 	Tags []Tag `json:"tags,omitempty"`
 }
 
+// Settings 通知推送相关的全部配置。所有字段在 settings 表里都以 notify_ 前缀的 key 存储。
 type Settings struct {
-	FeishuWebhook    string `json:"feishu_webhook"`
-	FeishuSecret     string `json:"feishu_secret"`
-	WeComWebhook     string `json:"wecom_webhook"`
-	AlertTiersJSON   string `json:"alert_tiers"`    // JSON array of ints, e.g. [30,7,1]
-	CheckIntervalMin int    `json:"check_interval"` // minutes between full scans
+	NotifyChannel string `json:"notify_channel"` // feishu | wecom
+
+	NotifyFeishuWebhook string `json:"notify_feishu_webhook"`
+	NotifyFeishuFormat  string `json:"notify_feishu_format"` // text | markdown
+	NotifyFeishuText    string `json:"notify_feishu_text"`
+
+	NotifyWeComWebhook string `json:"notify_wecom_webhook"`
+	NotifyWeComFormat  string `json:"notify_wecom_format"`
+	NotifyWeComText    string `json:"notify_wecom_text"`
+
+	NotifyCondAEnabled bool `json:"notify_cond_a_enabled"`
+	NotifyCondADays    int  `json:"notify_cond_a_days"`
+	NotifyCondBEnabled bool `json:"notify_cond_b_enabled"`
+	NotifyCondBCodes   string `json:"notify_cond_b_codes"` // 逗号分隔，如 "200,204,304"
+
+	// 探测调度（不属于通知，但同样存在 settings 表）
+	CheckIntervalMin int `json:"check_interval"`
 }
 
-func (s Settings) Tiers() []int {
-	var tiers []int
-	if s.AlertTiersJSON == "" {
-		return DefaultTiers()
-	}
-	if err := json.Unmarshal([]byte(s.AlertTiersJSON), &tiers); err != nil {
-		return DefaultTiers()
-	}
-	if len(tiers) == 0 {
-		return DefaultTiers()
-	}
-	return tiers
-}
-
-func DefaultTiers() []int {
-	return []int{30, 7, 1}
-}
-
+// DefaultSettings 返回首次启动时各字段的兜底值，跟前端默认保持一致。
 func DefaultSettings() Settings {
 	return Settings{
-		AlertTiersJSON:   "[30,7,1]",
+		NotifyChannel: "feishu",
+
+		NotifyFeishuWebhook: "",
+		NotifyFeishuFormat:  "markdown",
+		NotifyFeishuText:    defaultFeishuText,
+
+		NotifyWeComWebhook: "",
+		NotifyWeComFormat:  "text",
+		NotifyWeComText:    defaultWeComText,
+
+		NotifyCondAEnabled: true,
+		NotifyCondADays:    30,
+		NotifyCondBEnabled: false,
+		NotifyCondBCodes:   "200,204,304",
+
 		CheckIntervalMin: 360,
 	}
 }
+
+const defaultFeishuText = `## 🔔 证书到期提醒
+- **主机**：{$host}
+- **网址**：{$url}
+- **说明**：{$notes}
+- **剩余**：**{$days} 天**
+- **到期**：{$expire_date}
+- **签发 CA**：{$issuer}
+- **HTTP**：{$http_status}
+
+> 提醒时间 {$time}`
+
+const defaultWeComText = `# 证书到期提醒
+主机：{$host}
+网址：{$url}
+说明：{$notes}
+剩余天数：{$days} 天
+到期日期：{$expire_date}
+签发 CA：{$issuer}
+HTTP 状态：{$http_status}
+提醒时间：{$time}`

@@ -1177,17 +1177,33 @@
       help: '在企业微信群「群设置 → 添加群机器人」拿到的 Webhook 地址'
     }
   };
-  // 内存里同时存两个平台的 webhook，切换平台时回填对应值
-  var webhooks = { feishu: '', wecom: '' };
+  // 内存里同时存两个平台的整套配置（webhook / format / text），切平台时一并联动
+  var notifyStore = {
+    feishu: { webhook: '', format: 'text', text: '' },
+    wecom:  { webhook: '', format: 'text', text: '' }
+  };
 
-  var DEFAULT_NOTIFY_TEXT =
-    '【证书到期提醒】\n' +
+  var DEFAULT_FEISHU_TEXT =
+    '## 🔔 证书到期提醒\n' +
+    '- **主机**：{$host}\n' +
+    '- **网址**：{$url}\n' +
+    '- **说明**：{$notes}\n' +
+    '- **剩余**：**{$days} 天**\n' +
+    '- **到期**：{$expire_date}\n' +
+    '- **签发 CA**：{$issuer}\n' +
+    '- **HTTP**：{$http_status}\n' +
+    '\n' +
+    '> 提醒时间 {$time}';
+
+  var DEFAULT_WECOM_TEXT =
+    '# 证书到期提醒\n' +
     '主机：{$host}\n' +
     '网址：{$url}\n' +
     '说明：{$notes}\n' +
     '剩余天数：{$days} 天\n' +
     '到期日期：{$expire_date}\n' +
     '签发 CA：{$issuer}\n' +
+    'HTTP 状态：{$http_status}\n' +
     '提醒时间：{$time}';
 
   function currentChannel() {
@@ -1198,22 +1214,47 @@
   function applyChannelUI() {
     var ch = currentChannel();
     var meta = CHANNEL_META[ch] || CHANNEL_META.feishu;
+    var slot = notifyStore[ch] || { webhook: '', format: 'text', text: '' };
     $channelLabel.textContent = meta.label;
     $notifyWebhook.placeholder = meta.placeholder;
-    $notifyWebhook.value = webhooks[ch] || '';
+    $notifyWebhook.value = slot.webhook;
     $webhookHelp.textContent = meta.help;
+    document.querySelectorAll('input[name="notifyFormat"]').forEach(function (r) {
+      r.checked = r.value === slot.format;
+    });
+    $notifyText.value = slot.text;
+    updateNotifyCounter();
   }
 
-  // 切换平台前先把当前输入的 webhook 存到内存里
+  // 切平台前把当前 UI 上的值同步回 store，避免 input 未触发丢失
+  function syncCurrentToStore() {
+    var ch = currentChannel();
+    var fmt = 'text';
+    document.querySelectorAll('input[name="notifyFormat"]').forEach(function (r) {
+      if (r.checked) fmt = r.value;
+    });
+    notifyStore[ch] = {
+      webhook: $notifyWebhook.value.trim(),
+      format:  fmt,
+      text:    $notifyText.value
+    };
+  }
+
+  // 切换平台 → 先存当前 → 再加载新平台
   document.querySelectorAll('input[name="notifyChannel"]').forEach(function (r) {
     r.addEventListener('change', function () {
-      webhooks[currentChannel()] = $notifyWebhook.value.trim();
+      syncCurrentToStore();
       applyChannelUI();
     });
   });
-  // 输入时实时同步到内存
+  // 三个字段实时同步到 store
   $notifyWebhook.addEventListener('input', function () {
-    webhooks[currentChannel()] = $notifyWebhook.value.trim();
+    notifyStore[currentChannel()].webhook = $notifyWebhook.value.trim();
+  });
+  document.querySelectorAll('input[name="notifyFormat"]').forEach(function (r) {
+    r.addEventListener('change', function () {
+      if (r.checked) notifyStore[currentChannel()].format = r.value;
+    });
   });
 
   function updateNotifyCounter() {
@@ -1221,7 +1262,10 @@
     $notifyCounter.textContent = len + ' / ' + NOTIFY_TEXT_MAX;
     $notifyCounter.classList.toggle('warn', len >= NOTIFY_TEXT_MAX);
   }
-  $notifyText.addEventListener('input', updateNotifyCounter);
+  $notifyText.addEventListener('input', function () {
+    notifyStore[currentChannel()].text = $notifyText.value;
+    updateNotifyCounter();
+  });
 
   // ? 号变量提示：点开关，点外部 / ESC 关闭
   // 浮层挂到 body 上，避免被 .dlg 的 overflow:hidden 裁掉
@@ -1359,28 +1403,29 @@
   function loadNotifySettings() {
     api('GET', '/api/settings').then(function (s) {
       s = s || {};
-      webhooks.feishu = s.feishu_webhook || '';
-      webhooks.wecom  = s.wecom_webhook  || '';
+      notifyStore.feishu = {
+        webhook: s.notify_feishu_webhook || '',
+        format:  s.notify_feishu_format  || 'markdown',
+        text:    s.notify_feishu_text    || DEFAULT_FEISHU_TEXT
+      };
+      notifyStore.wecom = {
+        webhook: s.notify_wecom_webhook || '',
+        format:  s.notify_wecom_format  || 'text',
+        text:    s.notify_wecom_text    || DEFAULT_WECOM_TEXT
+      };
       var ch = s.notify_channel === 'wecom' ? 'wecom' : 'feishu';
       document.querySelectorAll('input[name="notifyChannel"]').forEach(function (r) {
         r.checked = r.value === ch;
       });
       applyChannelUI();
 
-      $notifyText.value = s.notify_text || DEFAULT_NOTIFY_TEXT;
-      var fmt = s.notify_format || 'text';
-      document.querySelectorAll('input[name="notifyFormat"]').forEach(function (r) {
-        r.checked = r.value === fmt;
-      });
-
       // 条件 A：默认勾选、默认 30 天
-      $condA.checked = s.cond_a_enabled !== false;
-      $condADays.value = s.cond_a_days || 30;
+      $condA.checked = s.notify_cond_a_enabled !== false;
+      $condADays.value = s.notify_cond_a_days || 30;
       // 条件 B：默认不勾选
-      $condB.checked = !!s.cond_b_enabled;
-      $condBCodes.value = s.cond_b_codes || '200,204,304';
+      $condB.checked = !!s.notify_cond_b_enabled;
+      $condBCodes.value = s.notify_cond_b_codes || '200,204,304';
 
-      updateNotifyCounter();
       updateNotifySaveState();
     }).catch(function (err) {
       toast('加载通知设置失败：' + err.message, 'error');
@@ -1397,13 +1442,8 @@
   $condB.addEventListener('change', updateNotifySaveState);
 
   function saveNotifySettings() {
-    // 内存里再 sync 一次当前输入框
-    webhooks[currentChannel()] = $notifyWebhook.value.trim();
-
-    var fmt = 'text';
-    document.querySelectorAll('input[name="notifyFormat"]').forEach(function (r) {
-      if (r.checked) fmt = r.value;
-    });
+    // 提交前最后同步一次当前平台的 UI 到 store
+    syncCurrentToStore();
 
     var aOn = $condA.checked;
     var bOn = $condB.checked;
@@ -1431,15 +1471,17 @@
     }
 
     var body = {
-      notify_channel:  currentChannel(),
-      feishu_webhook:  webhooks.feishu,
-      wecom_webhook:   webhooks.wecom,
-      notify_format:   fmt,
-      notify_text:     $notifyText.value,
-      cond_a_enabled:  aOn,
-      cond_a_days:     aDays,
-      cond_b_enabled:  bOn,
-      cond_b_codes:    bCodes
+      notify_channel:         currentChannel(),
+      notify_feishu_webhook:  notifyStore.feishu.webhook,
+      notify_feishu_format:   notifyStore.feishu.format,
+      notify_feishu_text:     notifyStore.feishu.text,
+      notify_wecom_webhook:   notifyStore.wecom.webhook,
+      notify_wecom_format:    notifyStore.wecom.format,
+      notify_wecom_text:      notifyStore.wecom.text,
+      notify_cond_a_enabled:  aOn,
+      notify_cond_a_days:     aDays,
+      notify_cond_b_enabled:  bOn,
+      notify_cond_b_codes:    bCodes
     };
     $notifySave.disabled = true;
     api('PUT', '/api/settings', body).then(function () {

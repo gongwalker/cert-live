@@ -51,15 +51,6 @@ CREATE INDEX IF NOT EXISTS idx_domains_host ON domains(host);
 CREATE INDEX IF NOT EXISTS idx_domains_not_after ON domains(not_after);
 -- idx_domains_sort 在 EnsureSchema 的 ALTER 迁移之后创建，避免老库迁移前缺列报错
 
-CREATE TABLE IF NOT EXISTS alert_log (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  domain_id INTEGER NOT NULL REFERENCES domains(id) ON DELETE CASCADE,
-  cert_serial TEXT NOT NULL,
-  tier INTEGER NOT NULL,
-  alerted_at INTEGER NOT NULL
-);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_alert_unique ON alert_log(domain_id, cert_serial, tier);
-
 CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL

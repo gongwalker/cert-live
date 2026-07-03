@@ -40,6 +40,7 @@ func main() {
 
 	srv := api.New(cfg, st)
 	srv.StartScheduler(ctx)
+	srv.StartNotifyScheduler(ctx)
 
 	log.Printf("cert-live 启动于 http://localhost:%s  模式=%s  账号: %s",
 		cfg.AppPort, cfg.GinMode, cfg.AdminUser)

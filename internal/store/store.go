@@ -61,7 +61,6 @@ func (s *Store) EnsureSchema() error {
 	// 迁移完成后才能建这个索引（依赖 sort_order 列）
 	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_domains_sort ON domains(sort_order)`)
 	for k, v := range map[string]string{
-		"alert_tiers":    "[30,7,1]",
 		"check_interval": "360",
 	} {
 		_, _ = s.db.Exec(`INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)`, k, v)
@@ -316,11 +315,7 @@ func (s *Store) UpdateDomainProbe(rec model.Domain) error {
 		rec.LastChecked, nullableString(rec.LastError),
 		nullableHTTPStatus(rec.HTTPStatus), nullableString(rec.HTTPError), nullableInt64(rec.HTTPChecked),
 		rec.ID)
-	if err != nil {
-		return err
-	}
-	s.purgeStaleAlerts(rec.ID, rec.SerialNumber, rec.LastError != "")
-	return nil
+	return err
 }
 
 // nullableHTTPStatus 0 视为未探测，存 NULL
@@ -329,31 +324,6 @@ func nullableHTTPStatus(v int) any {
 		return nil
 	}
 	return v
-}
-
-// ---------------- alert log ----------------
-
-func (s *Store) HasAlerted(domainID int64, serial string, tier int) (bool, error) {
-	var n int
-	err := s.db.QueryRow(`SELECT COUNT(1) FROM alert_log WHERE domain_id=? AND cert_serial=? AND tier=?`,
-		domainID, serial, tier).Scan(&n)
-	if err != nil {
-		return false, err
-	}
-	return n > 0, nil
-}
-
-func (s *Store) RecordAlert(domainID int64, serial string, tier int) error {
-	_, err := s.db.Exec(`INSERT OR IGNORE INTO alert_log(domain_id, cert_serial, tier, alerted_at) VALUES(?,?,?,?)`,
-		domainID, serial, tier, nowUnix())
-	return err
-}
-
-func (s *Store) purgeStaleAlerts(domainID int64, currentSerial string, hasError bool) {
-	if hasError {
-		return // 不可达域名：保留旧告警，避免它恢复时同张证书再次噪声
-	}
-	_, _ = s.db.Exec(`DELETE FROM alert_log WHERE domain_id=? AND cert_serial<>?`, domainID, currentSerial)
 }
 
 // ---------------- settings ----------------
