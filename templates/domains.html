@@ -164,22 +164,17 @@
   <div class="modal-overlay" id="settingsModal" aria-hidden="true">
     <div class="modal-card dlg dlg-settings">
       <div class="dlg-head">
-        <div>
-          <h3>设置</h3>
-          <p>管理标签与到期通知推送</p>
+        <!-- 选项卡导航（无标题，直接当顶部主导航） -->
+        <div class="settings-tabs" role="tablist">
+          <button type="button" class="settings-tab active" data-settings-tab="tags" role="tab">
+            <i class="fas fa-tags"></i> 标签管理
+          </button>
+          <button type="button" class="settings-tab" data-settings-tab="notify" role="tab">
+            <i class="fas fa-bell"></i> 通知管理
+          </button>
         </div>
         <button type="button" class="dlg-close" data-modal-close aria-label="关闭" title="关闭">
           <i class="fas fa-times"></i>
-        </button>
-      </div>
-
-      <!-- 选项卡导航 -->
-      <div class="settings-tabs" role="tablist">
-        <button type="button" class="settings-tab active" data-settings-tab="tags" role="tab">
-          <i class="fas fa-tags"></i> 标签管理
-        </button>
-        <button type="button" class="settings-tab" data-settings-tab="notify" role="tab">
-          <i class="fas fa-bell"></i> 通知管理
         </button>
       </div>
 
@@ -268,11 +263,12 @@
                 <div class="cond-row">
                   <label class="cond-check">
                     <input type="checkbox" id="condB">
-                    <span class="cond-text">条件 B：HTTP 状态码不等于</span>
+                    <span class="cond-text">条件 B：HTTP 状态码不在</span>
                     <input type="text" id="condBCodes" value="200,204,304" placeholder="200,204,304" class="inline-input input-codes">
+                    <span class="cond-text">列表中</span>
                   </label>
                 </div>
-                <p class="field-help">任一命中的域名即触发推送；状态码多个用英文逗号分隔，例如 200,204,304</p>
+                <p class="field-help">启用的条件任一命中即触发推送；HTTP 状态码用英文逗号分隔多个，如 200,204,304</p>
               </div>
             </div>
 

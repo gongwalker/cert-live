@@ -1228,14 +1228,14 @@
   var VAR_ROWS = [
     ['{$host}', '主机名'],
     ['{$url}', '完整 URL（含端口+路径）'],
-    ['{$notes}', '说明'],
-    ['{$tags}', '所有标签，空格分隔'],
     ['{$days}', '剩余天数'],
     ['{$http_status}', 'HTTP 状态码（无则空）'],
     ['{$subject}', '证书主体'],
     ['{$issuer}', '签发 CA'],
     ['{$expire_date}', '到期日期 YYYY-MM-DD HH:MM:SS'],
-    ['{$time}', '当前时间']
+    ['{$time}', '当前时间'],
+    ['{$tags}', '所有标签，空格分隔'],
+    ['{$notes}', '说明']
   ];
   var $varTipTrigger = document.getElementById('varTipTrigger');
   var $varHelp = null;
