@@ -1,0 +1,25 @@
+# 编译产物 / 运行时文件
+cert-live
+*.exe
+.run/
+logs/
+
+# 数据库（容器内挂卷生成，不入镜像）
+data/
+*.db
+*.db-*
+
+# 本地 .env（用 -e / --env-file 注入）
+.env
+
+# 版本控制
+.git/
+.gitignore
+
+# IDE
+.idea/
+.vscode/
+
+# 文档（镜像里不需要）
+README.md
+LICENSE

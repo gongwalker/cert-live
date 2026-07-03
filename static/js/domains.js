@@ -651,6 +651,26 @@
   // 新增按钮
   document.getElementById('addBtn').addEventListener('click', openAdd);
 
+  // 立即检测全部（探测 + 按条件推送），后台异步执行
+  var $checkAllBtn = document.getElementById('checkAllBtn');
+  $checkAllBtn.addEventListener('click', function () {
+    if ($checkAllBtn.disabled) return;
+    $checkAllBtn.disabled = true;
+    var icon = $checkAllBtn.querySelector('i');
+    var origClass = icon.className;
+    icon.className = 'fas fa-spinner fa-spin';
+    api('POST', '/api/domains/check-all').then(function () {
+      toast('已触发后台检测，完成后将按当前条件推送通知', 'success');
+      // 后台异步跑，几秒后刷新一次列表展示最新结果
+      setTimeout(loadDomains, 8000);
+    }).catch(function (err) {
+      toast('触发失败：' + err.message, 'error');
+    }).finally(function () {
+      icon.className = origClass;
+      $checkAllBtn.disabled = false;
+    });
+  });
+
   function openAdd() {
     $formTitle.textContent = '新增网址';
     $formSub.textContent = '添加后可立即检测证书状态';

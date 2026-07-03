@@ -12,9 +12,9 @@ func (s *Server) routes() http.Handler {
 	r := gin.New()
 	r.Use(gin.Logger(), gin.Recovery())
 
-	// 模板与静态资源（与 data-board 一致：磁盘文件，不内嵌）
-	r.LoadHTMLGlob("templates/*")
-	r.StaticFS("/static", http.Dir("static"))
+	// 模板 + 静态资源都从 embed.FS 读取（编译时已烤进二进制）
+	r.SetHTMLTemplate(s.loadTemplates())
+	r.StaticFS("/static", http.FS(s.staticFS()))
 
 	// 登录相关（公开）
 	r.GET("/login", s.LoginPage)

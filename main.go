@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"embed"
 	"fmt"
 	"log"
 	"os"
@@ -17,13 +18,42 @@ import (
 	"golang.org/x/term"
 )
 
+//go:embed templates static
+var assetsFS embed.FS
+
+const version = "dev"
+
 func main() {
-	// 子命令：reset-admin 用于改登录账号 / 密码，不启动服务
-	if len(os.Args) > 1 && os.Args[1] == "reset-admin" {
-		runResetAdmin(os.Args[2:])
+	args := os.Args[1:]
+	if len(args) == 0 {
+		runServer()
 		return
 	}
-	runServer()
+	switch args[0] {
+	case "serve":
+		runServer()
+	case "reset-admin":
+		runResetAdmin(args[1:])
+	case "version", "-v", "--version":
+		fmt.Println("cert-live", version)
+	case "help", "-h", "--help":
+		printHelp()
+	default:
+		fmt.Fprintf(os.Stderr, "未知命令: %s\n\n", args[0])
+		printHelp()
+		os.Exit(2)
+	}
+}
+
+func printHelp() {
+	fmt.Println("cert-live —— SSL 证书 + HTTP 健康监控")
+	fmt.Println()
+	fmt.Println("用法:")
+	fmt.Println("  cert-live                 启动服务（同 serve）")
+	fmt.Println("  cert-live serve           启动 HTTP 服务")
+	fmt.Println("  cert-live reset-admin     重置登录账号 / 密码")
+	fmt.Println("  cert-live version         打印版本号")
+	fmt.Println("  cert-live help            显示本帮助")
 }
 
 // runServer 正常启动服务（原 main 逻辑）。
@@ -50,7 +80,7 @@ func runServer() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	srv := api.New(cfg, st)
+	srv := api.New(cfg, st, assetsFS)
 	srv.StartScheduler(ctx)
 
 	log.Printf("cert-live 启动于 http://localhost:%s  模式=%s  账号: %s",

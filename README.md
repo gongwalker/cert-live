@@ -48,8 +48,9 @@
 ### 部署
 
 - 单二进制，全平台运行（Windows / Linux / macOS）
-- 前端无构建工具，磁盘文件直出
-- 通过 `.env` 配置端口、密钥、管理员账号
+- 前端模板和静态资源 **go:embed 进二进制**，部署只需一个文件
+- 通过 `.env` 或环境变量配置端口、密钥、管理员账号
+- Docker 镜像支持（多阶段构建，~30MB）
 
 ## 项目结构
 
@@ -130,6 +131,112 @@ make status      # 查看运行状态
 6. 保存
 
 5 分钟内调度器会扫库一次，命中条件的域名会自动推送。
+
+## Docker 部署
+
+镜像多阶段构建：`golang:1.25-alpine` 编译 → `alpine:latest` 运行。最终镜像约 30 MB，二进制用 `go:embed` 把模板和静态资源烤进去，只剩一个可执行文件 + SQLite 数据卷。
+
+### 方式一：`docker run`（一行命令）
+
+```bash
+# 1. 在宿主机建数据目录
+mkdir -p ./data
+
+# 2. 拉镜像 / 或本地构建
+docker build -t cert-live:latest .
+
+# 3. 起容器
+docker run -d \
+  --name cert-live \
+  --restart unless-stopped \
+  -p 9527:9527 \
+  -v /etc/localtime:/etc/localtime:ro \
+  -v /etc/timezone:/etc/timezone:ro \
+  -v "$(pwd)/data:/app/data" \
+  -e APP_PORT=9527 \
+  -e GIN_MODE=release \
+  -e SESSION_SECRET="$(openssl rand -hex 32)" \
+  -e ADMIN_USER=admin \
+  -e ADMIN_PASS=StrongPass123 \
+  cert-live:latest
+```
+
+要点：
+- **`-p 9527:9527`**：宿主机端口:容器端口，两边一致就行，要改一起改（还要带 `-e APP_PORT=同端口`）
+- **`-v "$(pwd)/data:/app/data"`**：SQLite 文件持久化，容器删了数据还在
+- **`-v /etc/localtime`**：宿主机时区同步到容器（镜像里也装了 `tzdata` 兜底）
+- **`SESSION_SECRET`**：必填，cookie 签名密钥，**生产一定要换成强随机串**
+- **`ADMIN_USER` / `ADMIN_PASS`**：首次启动 seed 进 settings 的初始账号密码；之后改密码用子命令（见下）
+
+### 方式二：`docker-compose`
+
+项目根目录已经有 `docker-compose.yml`：
+
+```yaml
+services:
+  cert-live:
+    build: .
+    image: cert-live:latest
+    container_name: cert-live
+    restart: unless-stopped
+    ports:
+      - "9527:9527"
+    volumes:
+      - ./data:/app/data
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    environment:
+      - APP_PORT=9527
+      - GIN_MODE=release
+      - SESSION_SECRET=please-change-me-to-a-long-random-string
+      - ADMIN_USER=admin
+      - ADMIN_PASS=admin123
+      - TZ=Asia/Shanghai
+```
+
+启动：
+
+```bash
+docker compose up -d --build       # 起容器（首次或代码改动后）
+docker compose logs -f             # 看日志
+docker compose restart             # 重启
+docker compose down                # 停止并删除容器（数据卷保留）
+```
+
+### 改账号 / 密码（容器内执行子命令）
+
+```bash
+# 交互式
+docker exec -it cert-live ./cert-live reset-admin
+
+# 非交互式（脚本 / CI）
+docker exec cert-live ./cert-live reset-admin admin NewStrongPass123
+```
+
+子命令直接读写挂载的 `data/certlive.db`，不需要重启容器，下次登录就用新账密。
+
+### 升级流程
+
+```bash
+git pull
+docker compose build         # 重新构建镜像
+docker compose up -d         # 替换容器（数据卷 ./data 保留）
+```
+
+数据文件 `./data/certlive.db` 跨升级保留，不需要迁移。
+
+### 备份 / 恢复
+
+宿主机直接复制文件就行：
+
+```bash
+# 备份（建议先停容器避免文件锁）
+docker compose stop
+cp ./data/certlive.db ./backup-$(date +%Y%m%d).db
+docker compose start
+```
+
+或用 Web UI 里的「备份」按钮（`GET /api/backup` 会下 `.db` 文件，基于 `VACUUM INTO` 出一致快照，无需停服务）。
 
 ## 推送变量
 
