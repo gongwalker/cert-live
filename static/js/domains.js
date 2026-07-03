@@ -1140,17 +1140,51 @@
     document.querySelectorAll('.settings-panel').forEach(function (el) {
       el.classList.toggle('active', el.getAttribute('data-settings-panel') === name);
     });
+    if (name === 'general') loadGeneralSettings();
     if (name === 'notify') loadNotifySettings();
+    if (name === 'tags') loadTags();
   });
 
-  // 打开设置弹窗时加载标签 + 通知设置
+  // 打开设置弹窗时加载当前激活面板的数据
   document.addEventListener('click', function (e) {
     var opener = e.target.closest('[data-modal-open="settingsModal"]');
     if (opener) {
-      setTimeout(loadTags, 50);
-      setTimeout(loadNotifySettings, 50);
+      setTimeout(loadGeneralSettings, 50);
     }
   });
+
+  // ===== 通用设置：加载 / 保存 =====
+  var $cycleInterval = document.getElementById('cycleIntervalInput');
+  var $generalSave   = document.getElementById('generalSaveBtn');
+
+  function loadGeneralSettings() {
+    api('GET', '/api/settings').then(function (s) {
+      s = s || {};
+      var min = parseInt(s.cycle_interval_min, 10);
+      if (!min || min < 1 || min > 60) min = 20;
+      $cycleInterval.value = min;
+    }).catch(function (err) {
+      toast('加载通用设置失败：' + err.message, 'error');
+    });
+  }
+
+  function saveGeneralSettings() {
+    var min = parseInt($cycleInterval.value, 10);
+    if (!min || min < 1 || min > 60) {
+      toast('检测周期需为 1 ~ 60 之间的整数', 'error');
+      $cycleInterval.focus();
+      return;
+    }
+    $generalSave.disabled = true;
+    api('PUT', '/api/settings', { cycle_interval_min: min }).then(function () {
+      toast('已保存，下一轮生效', 'success');
+    }).catch(function (err) {
+      toast('保存失败：' + err.message, 'error');
+    }).finally(function () {
+      $generalSave.disabled = false;
+    });
+  }
+  $generalSave.addEventListener('click', saveGeneralSettings);
 
   // ===== 通知管理：加载 / 保存 =====
   var $notifyWebhook = document.getElementById('notifyWebhook');

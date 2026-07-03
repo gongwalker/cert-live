@@ -62,8 +62,8 @@ type Settings struct {
 	NotifyCondBEnabled bool `json:"notify_cond_b_enabled"`
 	NotifyCondBCodes   string `json:"notify_cond_b_codes"` // 逗号分隔，如 "200,204,304"
 
-	// 探测调度（不属于通知，但同样存在 settings 表）
-	CheckIntervalMin int `json:"check_interval"`
+	// 通用设置
+	CycleIntervalMin int `json:"cycle_interval_min"` // 探测 + 推送 整体周期（分钟）
 }
 
 // DefaultSettings 返回首次启动时各字段的兜底值，跟前端默认保持一致。
@@ -84,7 +84,7 @@ func DefaultSettings() Settings {
 		NotifyCondBEnabled: false,
 		NotifyCondBCodes:   "200,204,304",
 
-		CheckIntervalMin: 360,
+		CycleIntervalMin: 20,
 	}
 }
 

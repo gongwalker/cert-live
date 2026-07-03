@@ -26,14 +26,9 @@ func New(cfg *config.Config, st *store.Store) *Server {
 	}
 }
 
-// StartScheduler 后台运行定时证书探测
+// StartScheduler 启动后台循环：每 5 分钟一轮「探测所有域名 → 扫库 → 推送」
 func (s *Server) StartScheduler(ctx context.Context) {
 	go s.scheduler.Run(ctx)
-}
-
-// StartNotifyScheduler 后台运行通知推送扫描（5 分钟一次）
-func (s *Server) StartNotifyScheduler(ctx context.Context) {
-	go s.scheduler.RunNotify(ctx)
 }
 
 // Run 监听 addr，阻塞直至出错

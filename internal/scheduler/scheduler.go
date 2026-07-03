@@ -1,3 +1,7 @@
+// Package scheduler 跑一个固定 5 分钟的循环：先把所有域名探测一遍，
+// 紧接着扫库找命中推送条件的，直接发飞书 / 企业微信。
+//
+// 探测和推送串在一个 tick 里，保证推送用的永远是「刚才那几秒」探测到的最新数据。
 package scheduler
 
 import (
@@ -6,6 +10,7 @@ import (
 	"log"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"cert-live/internal/model"
@@ -14,9 +19,13 @@ import (
 	"cert-live/internal/store"
 )
 
-// Scheduler 跑两个独立循环：
-//   Run          —— 证书探测（间隔由 settings.check_interval 控制，默认 6h）
-//   RunNotify    —— 通知推送（固定 5min 扫一次库，命中条件 A 或 B 就推）
+const (
+	defaultCycleMin = 20              // 配置缺失或非法时的兜底周期
+	minCycleMin     = 1               // 配置下限
+	maxCycleMin     = 60              // 配置上限
+	probeParallel   = 10              // 并发探测上限，避免一次开太多 TCP 连接
+)
+
 type Scheduler struct {
 	st *store.Store
 }
@@ -25,70 +34,82 @@ func New(st *store.Store) *Scheduler {
 	return &Scheduler{st: st}
 }
 
-// Run 证书探测循环：开机 5s 跑一次，之后按 check_interval 周期跑。
+// Run 单循环：开机 30s 跑首次，之后按 settings.cycle_interval_min 间隔跑。
+// 每轮顺序：并发探测所有域名 → 扫库找命中 → 限速推送。
+// 周期在每次循环开始时从 DB 读，用户改完设置下一轮就生效。
 func (s *Scheduler) Run(ctx context.Context) {
-	go func() {
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(5 * time.Second):
-			s.CheckAll()
-		}
-	}()
-	for {
-		settings := readSettings(s.st)
-		interval := time.Duration(settings.CheckIntervalMin) * time.Minute
-		if interval <= 0 {
-			interval = 6 * time.Hour
-		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(interval):
-			s.CheckAll()
-		}
-	}
-}
-
-// RunNotify 通知推送循环：固定 5 分钟扫一次。
-func (s *Scheduler) RunNotify(ctx context.Context) {
-	// 开机先等 30s 再首次扫描，给探测循环一点时间填数据
+	// 首次启动稍微等一下，让 HTTP 服务先把监听端口起来
 	go func() {
 		select {
 		case <-ctx.Done():
 			return
 		case <-time.After(30 * time.Second):
-			s.ScanAndPush()
+			s.probeAll(ctx)
+			s.scanAndPush()
 		}
 	}()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(5 * time.Minute):
-			s.ScanAndPush()
+		case <-time.After(s.cycleInterval()):
+			s.probeAll(ctx)
+			s.scanAndPush()
 		}
 	}
 }
 
-// CheckAll 探测所有域名，把证书 / HTTP 结果写回 domains 表。不发推送。
-func (s *Scheduler) CheckAll() {
+// cycleInterval 从 settings 读 cycle_interval_min，越界回退到默认 20 min。
+func (s *Scheduler) cycleInterval() time.Duration {
+	min := readSettings(s.st).CycleIntervalMin
+	if min < minCycleMin || min > maxCycleMin {
+		min = defaultCycleMin
+	}
+	return time.Duration(min) * time.Minute
+}
+
+// RunOnce 一轮完整工作：探测 → 扫库 → 推送。供 API 手动触发。
+func (s *Scheduler) RunOnce() {
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
+	defer cancel()
+	s.probeAll(ctx)
+	s.scanAndPush()
+}
+
+// CheckOne 立即探测单个域名（API 手动触发用），结果写库。不影响后台循环。
+func (s *Scheduler) CheckOne(domainID int64) {
+	s.probeOne(domainID)
+}
+
+// probeAll 并发探测所有域名，并发度受 probeParallel 控制。
+// 单域名超时由 probe 包内部保证（TLS 握手 + HTTP 各自带 timeout）。
+func (s *Scheduler) probeAll(ctx context.Context) {
 	ids, err := s.st.ListAllDomainIDs()
 	if err != nil {
 		log.Printf("scheduler: list domains: %v", err)
 		return
 	}
+	sem := make(chan struct{}, probeParallel)
+	var wg sync.WaitGroup
 	for _, id := range ids {
-		s.checkOne(id)
+		select {
+		case <-ctx.Done():
+			return
+		case sem <- struct{}{}:
+		}
+		wg.Add(1)
+		go func(domainID int64) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			s.probeOne(domainID)
+		}(id)
 	}
+	wg.Wait()
 }
 
-// CheckOne 立即探测单个域名（API 手动触发用），结果写库。
-func (s *Scheduler) CheckOne(domainID int64) {
-	s.checkOne(domainID)
-}
-
-func (s *Scheduler) checkOne(domainID int64) {
+// probeOne 探测单个域名：TLS 拿证书 + HTTP 拿状态码，写回 domains 表。
+// 失败时只写 last_error，下一轮照样探（不做退避，靠 probe 内部的 10s 超时兜底）。
+func (s *Scheduler) probeOne(domainID int64) {
 	dom, err := s.st.GetDomain(domainID)
 	if err != nil || dom == nil {
 		log.Printf("scheduler: get domain %d: %v", domainID, err)
@@ -117,6 +138,7 @@ func (s *Scheduler) checkOne(domainID int64) {
 	rec.IsWildcard = res.IsWildcard
 	rec.DaysRemaining = res.DaysRemaining
 	rec.LastChecked = now
+	rec.LastError = ""
 
 	httpRes := probe.HTTPProbe(dom.Host, dom.Port, dom.Path)
 	if httpRes != nil {
@@ -129,32 +151,34 @@ func (s *Scheduler) checkOne(domainID int64) {
 	}
 }
 
-// ScanAndPush 扫所有域名，命中条件 A 或 B 且未推送过的，立即推。
-// 同一张证书最多推一次（用 alert_log(domain_id, cert_serial) 去重）。
-func (s *Scheduler) ScanAndPush() {
+// scanAndPush 扫所有域名，命中条件 A 或 B 就立即推（不去重）。
+func (s *Scheduler) scanAndPush() {
 	settings := readSettings(s.st)
 	if !settings.NotifyCondAEnabled && !settings.NotifyCondBEnabled {
-		return // 至少要有一个条件
-	}
-	// 至少得有一个 webhook 配置
-	feishuReady := settings.NotifyFeishuWebhook != ""
-	wecomReady := settings.NotifyWeComWebhook != ""
-	if !feishuReady && !wecomReady {
-		return
+		return // 至少要有一个条件启用
 	}
 
-	// 当前激活平台必须有 webhook
+	// 当前激活平台的 webhook 必须有
 	var ch notify.Channel
-	if settings.NotifyChannel == "wecom" {
-		if !wecomReady {
+	switch settings.NotifyChannel {
+	case "wecom":
+		if settings.NotifyWeComWebhook == "" {
 			return
 		}
-		ch = notify.Channel{Platform: notify.WeCom, Webhook: settings.NotifyWeComWebhook, Format: settings.NotifyWeComFormat}
-	} else {
-		if !feishuReady {
+		ch = notify.Channel{
+			Platform: notify.WeCom,
+			Webhook:  settings.NotifyWeComWebhook,
+			Format:   settings.NotifyWeComFormat,
+		}
+	default: // feishu 或未设置都走飞书
+		if settings.NotifyFeishuWebhook == "" {
 			return
 		}
-		ch = notify.Channel{Platform: notify.Feishu, Webhook: settings.NotifyFeishuWebhook, Format: settings.NotifyFeishuFormat}
+		ch = notify.Channel{
+			Platform: notify.Feishu,
+			Webhook:  settings.NotifyFeishuWebhook,
+			Format:   settings.NotifyFeishuFormat,
+		}
 	}
 
 	domains, err := s.st.ListDomains("", nil)
@@ -162,36 +186,30 @@ func (s *Scheduler) ScanAndPush() {
 		log.Printf("scheduler: list domains: %v", err)
 		return
 	}
-
-	httpOK := parseHTTPWhitelist(settings.NotifyCondBCodes)
+	httpWhitelist := parseHTTPWhitelist(settings.NotifyCondBCodes)
+	tmpl := settings.NotifyFeishuText
+	if settings.NotifyChannel == "wecom" {
+		tmpl = settings.NotifyWeComText
+	}
 
 	for _, d := range domains {
-		// 没探测过 / 探测失败，跳过（避免对未知状态误报）
+		// 探测失败 / 还没探测过：跳过，避免误报
 		if d.LastError != "" || d.NotAfter == 0 {
 			continue
 		}
-		// 命中条件 A 或 B 就推，不去重 —— 5 分钟一次，每次扫到都推
 		hitA := settings.NotifyCondAEnabled && d.DaysRemaining < settings.NotifyCondADays
-		hitB := settings.NotifyCondBEnabled && !httpOK[d.HTTPStatus]
+		hitB := settings.NotifyCondBEnabled && !httpWhitelist[d.HTTPStatus]
 		if !hitA && !hitB {
 			continue
 		}
-
-		// 选模板：当前激活平台对应的 text。变量替换。
-		tmpl := settings.NotifyFeishuText
-		if settings.NotifyChannel == "wecom" {
-			tmpl = settings.NotifyWeComText
-		}
 		rendered := notify.Render(tmpl, buildVars(d))
-
 		if err := ch.Send(rendered); err != nil {
 			log.Printf("notify: send %s: %v", d.Host, err)
 		}
 	}
 }
 
-// parseHTTPWhitelist 解析 "200,204,304" → map[int]bool{200:true, 204:true, 304:true}。
-// 解析失败的条目跳过；空串 → 全部视为不匹配（条件 B 永远命中，慎用）。
+// parseHTTPWhitelist "200,204,304" → map[int]bool{200:true, ...}
 func parseHTTPWhitelist(s string) map[int]bool {
 	out := map[int]bool{}
 	for _, part := range strings.Split(s, ",") {
@@ -241,7 +259,7 @@ func buildVars(d model.Domain) notify.Vars {
 		Days:       strconv.Itoa(d.DaysRemaining),
 		HTTPStatus: httpStr,
 		Subject:    d.Subject,
-		Issuer:     d.IssuerOrg + " " + d.Issuer,
+		Issuer:     strings.TrimSpace(d.IssuerOrg + " " + d.Issuer),
 		ExpireDate: expireDate,
 		Time:       time.Now().Format("2006-01-02 15:04:05"),
 	}
@@ -290,9 +308,9 @@ func readSettings(st *store.Store) model.Settings {
 	if v, ok := m["notify_cond_b_codes"]; ok {
 		s.NotifyCondBCodes = v
 	}
-	if v, ok := m["check_interval"]; ok && v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 {
-			s.CheckIntervalMin = n
+	if v, ok := m["cycle_interval_min"]; ok {
+		if n, err := strconv.Atoi(v); err == nil {
+			s.CycleIntervalMin = n
 		}
 	}
 	return s

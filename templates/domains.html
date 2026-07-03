@@ -166,7 +166,10 @@
       <div class="dlg-head">
         <!-- 选项卡导航（无标题，直接当顶部主导航） -->
         <div class="settings-tabs" role="tablist">
-          <button type="button" class="settings-tab active" data-settings-tab="tags" role="tab">
+          <button type="button" class="settings-tab active" data-settings-tab="general" role="tab">
+            <i class="fas fa-sliders"></i> 通用设置
+          </button>
+          <button type="button" class="settings-tab" data-settings-tab="tags" role="tab">
             <i class="fas fa-tags"></i> 标签管理
           </button>
           <button type="button" class="settings-tab" data-settings-tab="notify" role="tab">
@@ -179,8 +182,30 @@
       </div>
 
       <div class="dlg-body">
+        <!-- 选项卡 0：通用设置 -->
+        <div class="settings-panel active" data-settings-panel="general">
+          <div class="general-form">
+            <div class="field">
+              <label for="cycleIntervalInput">检测周期</label>
+              <div class="field-control">
+                <div class="threshold-row">
+                  <span>每</span>
+                  <input type="number" id="cycleIntervalInput" min="1" max="60" value="20">
+                  <span>分钟执行一轮「探测证书 + 检查条件 + 推送通知」</span>
+                </div>
+                <p class="field-help">范围 1 ~ 60 分钟；默认 20 分钟。改完保存后，下一轮生效。</p>
+              </div>
+            </div>
+
+            <div class="dlg-actions">
+              <button type="button" class="btn-solid" id="generalSaveBtn">保存设置</button>
+            </div>
+          </div>
+        </div>
+
         <!-- 选项卡 1：标签管理 -->
-        <div class="settings-panel active" data-settings-panel="tags">
+        <!-- 选项卡 1：标签管理 -->
+        <div class="settings-panel" data-settings-panel="tags">
           <div class="tag-add">
             <input type="text" id="tagInput" placeholder="输入标签名，回车或点添加" maxlength="20">
             <button type="button" class="btn-solid" id="tagAddBtn"><i class="fas fa-plus"></i>添加</button>

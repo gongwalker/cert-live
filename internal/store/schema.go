@@ -11,9 +11,8 @@ import (
 	"cert-live/internal/model"
 )
 
-// schema 库结构：users / domains（含探测结果）/ alert_log / settings
-// - domains 合并了原 cert_records，1 条域名 1 行
-// - 已移除 domain_groups（UI 不再用）
+// schema 库结构：users / domains（含探测结果）/ settings / tags / domain_tags
+// - 1 条域名 1 行，最近一次证书 / HTTP 探测结果就并在这行上
 const schema = `
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

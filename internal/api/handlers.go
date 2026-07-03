@@ -229,7 +229,8 @@ func (s *Server) handleCheckDomain(c *gin.Context) {
 }
 
 func (s *Server) handleCheckAll(c *gin.Context) {
-	go s.scheduler.CheckAll()
+	// 后台异步跑一轮（探测 + 推送），不阻塞 API 响应
+	go s.scheduler.RunOnce()
 	ok(c, gin.H{"triggered": true})
 }
 
@@ -377,7 +378,7 @@ func (s *Server) handleGetSettings(c *gin.Context) {
 		"notify_cond_a_days":     getStr(m, "notify_cond_a_days", strconv.Itoa(def.NotifyCondADays)),
 		"notify_cond_b_enabled":  getStr(m, "notify_cond_b_enabled", boolStr(def.NotifyCondBEnabled)),
 		"notify_cond_b_codes":    getStr(m, "notify_cond_b_codes", def.NotifyCondBCodes),
-		"check_interval":         getStr(m, "check_interval", strconv.Itoa(def.CheckIntervalMin)),
+		"cycle_interval_min":     getStr(m, "cycle_interval_min", strconv.Itoa(def.CycleIntervalMin)),
 	}
 	ok(c, out)
 }
@@ -415,7 +416,7 @@ func (s *Server) handleUpdateSettings(c *gin.Context) {
 		"notify_cond_a_days":    "int",
 		"notify_cond_b_enabled": "bool",
 		"notify_cond_b_codes":   "string",
-		"check_interval":        "int",
+		"cycle_interval_min":    "int",
 	}
 	for key, kind := range allowed {
 		raw, ok := req[key]

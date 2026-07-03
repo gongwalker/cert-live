@@ -2,8 +2,14 @@
   // ===== 通用弹窗 =====
   // 触发：任何元素加 data-modal-open="modalId" → 打开 #modalId
   // 关闭：data-modal-close 元素、点击遮罩本身、按 ESC
-  function open(modal) { modal.classList.add('show'); }
-  function close(modal) { modal.classList.remove('show'); }
+  function open(modal) {
+    modal.classList.add('show');
+    modal.setAttribute('aria-hidden', 'false');
+  }
+  function close(modal) {
+    modal.classList.remove('show');
+    modal.setAttribute('aria-hidden', 'true');
+  }
 
   function init() {
     var modals = document.querySelectorAll('.modal-overlay');

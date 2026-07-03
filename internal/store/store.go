@@ -46,25 +46,7 @@ func (s *Store) EnsureSchema() error {
 	if err != nil {
 		return err
 	}
-	// 老库迁移：补 tags.sort_order 列
-	_, _ = s.db.Exec(`ALTER TABLE tags ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0`)
-	_, _ = s.db.Exec(`ALTER TABLE tags ADD COLUMN icon TEXT`)
-	_, _ = s.db.Exec(`ALTER TABLE tags ADD COLUMN color TEXT`)
-	// 老库迁移：补 domains.sort_order 列
-	_, _ = s.db.Exec(`ALTER TABLE domains ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0`)
-	// 老库迁移：补 domains 证书 HTTP 探测列
-	_, _ = s.db.Exec(`ALTER TABLE domains ADD COLUMN http_status INTEGER`)
-	_, _ = s.db.Exec(`ALTER TABLE domains ADD COLUMN http_error TEXT`)
-	_, _ = s.db.Exec(`ALTER TABLE domains ADD COLUMN http_checked INTEGER`)
-	// 老库迁移：补 domains.path
-	_, _ = s.db.Exec(`ALTER TABLE domains ADD COLUMN path TEXT NOT NULL DEFAULT '/'`)
-	// 迁移完成后才能建这个索引（依赖 sort_order 列）
 	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_domains_sort ON domains(sort_order)`)
-	for k, v := range map[string]string{
-		"check_interval": "360",
-	} {
-		_, _ = s.db.Exec(`INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)`, k, v)
-	}
 	return nil
 }
 
@@ -299,7 +281,7 @@ func (s *Store) ListAllDomainIDs() ([]int64, error) {
 	return ids, rows.Err()
 }
 
-// UpdateDomainProbe 写入一次 TLS 探测 + HTTP 探测的结果（仅探测字段，不动用户字段）
+// UpdateDomainProbe 写入一次 TLS + HTTP 探测的结果（仅探测字段，不动用户字段）
 func (s *Store) UpdateDomainProbe(rec model.Domain) error {
 	sans, _ := json.Marshal(rec.SANs)
 	_, err := s.db.Exec(`UPDATE domains SET
