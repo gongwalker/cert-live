@@ -1381,10 +1381,20 @@
       $condBCodes.value = s.cond_b_codes || '200,204,304';
 
       updateNotifyCounter();
+      updateNotifySaveState();
     }).catch(function (err) {
       toast('加载通知设置失败：' + err.message, 'error');
     });
   }
+
+  // 至少勾选 A / B 一个，否则保存按钮置灰
+  function updateNotifySaveState() {
+    var ok = $condA.checked || $condB.checked;
+    $notifySave.disabled = !ok;
+    $notifySave.title = ok ? '' : '请至少启用一个推送条件';
+  }
+  $condA.addEventListener('change', updateNotifySaveState);
+  $condB.addEventListener('change', updateNotifySaveState);
 
   function saveNotifySettings() {
     // 内存里再 sync 一次当前输入框
