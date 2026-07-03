@@ -12,6 +12,10 @@ import (
 	"time"
 )
 
+// browserUA 是探测时伪装的浏览器 UA。默认 Go-http-client/1.1 会被很多站点 WAF
+// 当成爬虫直接 403，看不到真实状态码。
+const browserUA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+
 type Result struct {
 	Host          string
 	Subject       string
@@ -119,7 +123,12 @@ func HTTPProbeTimeout(host string, port int, urlPath string, timeout time.Durati
 			return http.ErrUseLastResponse
 		},
 	}
-	resp, err := client.Get(full)
+	req, err := http.NewRequest(http.MethodGet, full, nil)
+	if err != nil {
+		return &HTTPResult{Error: err.Error()}
+	}
+	req.Header.Set("User-Agent", browserUA)
+	resp, err := client.Do(req)
 	if err != nil {
 		return &HTTPResult{Error: err.Error()}
 	}
