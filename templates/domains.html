@@ -160,25 +160,126 @@
     </div>
   </div>
 
-  <!-- 设置弹窗：标签管理 -->
+  <!-- 设置弹窗：标签管理 / 通知管理 -->
   <div class="modal-overlay" id="settingsModal" aria-hidden="true">
     <div class="modal-card dlg dlg-settings">
       <div class="dlg-head">
         <div>
           <h3>设置</h3>
-          <p>管理标签，用于后续给域名分类</p>
+          <p>管理标签与到期通知推送</p>
         </div>
         <button type="button" class="dlg-close" data-modal-close aria-label="关闭" title="关闭">
           <i class="fas fa-times"></i>
         </button>
       </div>
+
+      <!-- 选项卡导航 -->
+      <div class="settings-tabs" role="tablist">
+        <button type="button" class="settings-tab active" data-settings-tab="tags" role="tab">
+          <i class="fas fa-tags"></i> 标签管理
+        </button>
+        <button type="button" class="settings-tab" data-settings-tab="notify" role="tab">
+          <i class="fas fa-bell"></i> 通知管理
+        </button>
+      </div>
+
       <div class="dlg-body">
-        <div class="tag-add">
-          <input type="text" id="tagInput" placeholder="输入标签名，回车或点添加" maxlength="20">
-          <button type="button" class="btn-solid" id="tagAddBtn"><i class="fas fa-plus"></i>添加</button>
+        <!-- 选项卡 1：标签管理 -->
+        <div class="settings-panel active" data-settings-panel="tags">
+          <div class="tag-add">
+            <input type="text" id="tagInput" placeholder="输入标签名，回车或点添加" maxlength="20">
+            <button type="button" class="btn-solid" id="tagAddBtn"><i class="fas fa-plus"></i>添加</button>
+          </div>
+          <div class="tag-list" id="tagList">
+            <div class="tag-empty">加载中...</div>
+          </div>
         </div>
-        <div class="tag-list" id="tagList">
-          <div class="tag-empty">加载中...</div>
+
+        <!-- 选项卡 2：通知管理 -->
+        <div class="settings-panel" data-settings-panel="notify">
+          <div class="notify-form">
+            <div class="field">
+              <label>推送平台 <span class="opt">二选一</span></label>
+              <div class="field-control">
+                <div class="radio-row channel-row">
+                  <label class="radio-opt channel-opt" data-channel="feishu">
+                    <input type="radio" name="notifyChannel" value="feishu">
+                    <i class="fas fa-comment-dots"></i><span>飞书</span>
+                  </label>
+                  <label class="radio-opt channel-opt" data-channel="wecom">
+                    <input type="radio" name="notifyChannel" value="wecom">
+                    <i class="fab fa-weixin"></i><span>企业微信</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="notifyWebhook"><span id="channelLabel">飞书</span>机器人 Webhook</label>
+              <div class="field-control">
+                <input type="text" id="notifyWebhook" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/xxxxx" autocomplete="off">
+                <p class="field-help" id="webhookHelp">填群机器人的回调地址</p>
+              </div>
+            </div>
+
+            <div class="field">
+              <label>推送格式</label>
+              <div class="field-control">
+                <div class="radio-row">
+                  <label class="radio-opt">
+                    <input type="radio" name="notifyFormat" value="text">
+                    <span>文本 (text)</span>
+                  </label>
+                  <label class="radio-opt">
+                    <input type="radio" name="notifyFormat" value="markdown">
+                    <span>Markdown</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="notifyText">
+                推送内容
+                <span class="opt">
+                  可用变量
+                  <button type="button" class="var-tip-trigger" id="varTipTrigger" title="点此查看可用变量">
+                    <i class="fas fa-circle-question"></i>
+                  </button>
+                </span>
+              </label>
+              <div class="field-control">
+                <textarea id="notifyText" rows="6" placeholder="例如：证书到期提醒：{$host} 剩余 {$days} 天，到期日 {$expire_date}"></textarea>
+                <p class="field-counter" id="notifyTextCounter">0 / 1000</p>
+              </div>
+            </div>
+
+            <div class="field">
+              <label>推送条件 <span class="opt">至少选一个 · 多个条件为「或」关系</span></label>
+              <div class="field-control">
+                <div class="cond-row">
+                  <label class="cond-check">
+                    <input type="checkbox" id="condA">
+                    <span class="cond-text">条件 A：证书剩余天数小于</span>
+                    <input type="number" id="condADays" min="1" max="365" value="30" class="inline-input">
+                    <span class="cond-text">天</span>
+                  </label>
+                </div>
+                <div class="cond-row">
+                  <label class="cond-check">
+                    <input type="checkbox" id="condB">
+                    <span class="cond-text">条件 B：HTTP 状态码不等于</span>
+                    <input type="text" id="condBCodes" value="200,204,304" placeholder="200,204,304" class="inline-input input-codes">
+                  </label>
+                </div>
+                <p class="field-help">任一命中的域名即触发推送；状态码多个用英文逗号分隔，例如 200,204,304</p>
+              </div>
+            </div>
+
+            <div class="dlg-actions">
+              <button type="button" class="btn-solid" id="notifySaveBtn"><i class="fas fa-floppy-disk"></i>保存设置</button>
+            </div>
+          </div>
         </div>
       </div>
     </div>

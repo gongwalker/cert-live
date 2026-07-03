@@ -1129,13 +1129,318 @@
     });
   });
 
-  // 打开设置弹窗时加载标签
+  // ===== 设置弹窗：选项卡切换 =====
+  document.addEventListener('click', function (e) {
+    var tab = e.target.closest('.settings-tab');
+    if (!tab) return;
+    var name = tab.getAttribute('data-settings-tab');
+    document.querySelectorAll('.settings-tab').forEach(function (el) {
+      el.classList.toggle('active', el === tab);
+    });
+    document.querySelectorAll('.settings-panel').forEach(function (el) {
+      el.classList.toggle('active', el.getAttribute('data-settings-panel') === name);
+    });
+    if (name === 'notify') loadNotifySettings();
+  });
+
+  // 打开设置弹窗时加载标签 + 通知设置
   document.addEventListener('click', function (e) {
     var opener = e.target.closest('[data-modal-open="settingsModal"]');
     if (opener) {
       setTimeout(loadTags, 50);
+      setTimeout(loadNotifySettings, 50);
     }
   });
+
+  // ===== 通知管理：加载 / 保存 =====
+  var $notifyWebhook = document.getElementById('notifyWebhook');
+  var $channelLabel  = document.getElementById('channelLabel');
+  var $webhookHelp   = document.getElementById('webhookHelp');
+  var $notifyText    = document.getElementById('notifyText');
+  var $notifyCounter = document.getElementById('notifyTextCounter');
+  var $notifySave    = document.getElementById('notifySaveBtn');
+  var $condA         = document.getElementById('condA');
+  var $condADays     = document.getElementById('condADays');
+  var $condB         = document.getElementById('condB');
+  var $condBCodes    = document.getElementById('condBCodes');
+  var NOTIFY_TEXT_MAX = 1000;
+
+  var CHANNEL_META = {
+    feishu: {
+      label: '飞书',
+      placeholder: 'https://open.feishu.cn/open-apis/bot/v2/hook/xxxxx',
+      help: '在飞书群「设置 → 群机器人 → 添加自定义机器人」拿到的回调地址'
+    },
+    wecom: {
+      label: '企业微信',
+      placeholder: 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxx',
+      help: '在企业微信群「群设置 → 添加群机器人」拿到的 Webhook 地址'
+    }
+  };
+  // 内存里同时存两个平台的 webhook，切换平台时回填对应值
+  var webhooks = { feishu: '', wecom: '' };
+
+  var DEFAULT_NOTIFY_TEXT =
+    '【证书到期提醒】\n' +
+    '主机：{$host}\n' +
+    '网址：{$url}\n' +
+    '说明：{$notes}\n' +
+    '剩余天数：{$days} 天\n' +
+    '到期日期：{$expire_date}\n' +
+    '签发 CA：{$issuer}\n' +
+    '提醒时间：{$time}';
+
+  function currentChannel() {
+    var checked = document.querySelector('input[name="notifyChannel"]:checked');
+    return checked ? checked.value : 'feishu';
+  }
+
+  function applyChannelUI() {
+    var ch = currentChannel();
+    var meta = CHANNEL_META[ch] || CHANNEL_META.feishu;
+    $channelLabel.textContent = meta.label;
+    $notifyWebhook.placeholder = meta.placeholder;
+    $notifyWebhook.value = webhooks[ch] || '';
+    $webhookHelp.textContent = meta.help;
+  }
+
+  // 切换平台前先把当前输入的 webhook 存到内存里
+  document.querySelectorAll('input[name="notifyChannel"]').forEach(function (r) {
+    r.addEventListener('change', function () {
+      webhooks[currentChannel()] = $notifyWebhook.value.trim();
+      applyChannelUI();
+    });
+  });
+  // 输入时实时同步到内存
+  $notifyWebhook.addEventListener('input', function () {
+    webhooks[currentChannel()] = $notifyWebhook.value.trim();
+  });
+
+  function updateNotifyCounter() {
+    var len = ($notifyText.value || '').length;
+    $notifyCounter.textContent = len + ' / ' + NOTIFY_TEXT_MAX;
+    $notifyCounter.classList.toggle('warn', len >= NOTIFY_TEXT_MAX);
+  }
+  $notifyText.addEventListener('input', updateNotifyCounter);
+
+  // ? 号变量提示：点开关，点外部 / ESC 关闭
+  // 浮层挂到 body 上，避免被 .dlg 的 overflow:hidden 裁掉
+  var VAR_ROWS = [
+    ['{$host}', '主机名'],
+    ['{$url}', '完整 URL（含端口+路径）'],
+    ['{$notes}', '说明'],
+    ['{$tags}', '所有标签，空格分隔'],
+    ['{$days}', '剩余天数'],
+    ['{$http_status}', 'HTTP 状态码（无则空）'],
+    ['{$subject}', '证书主体'],
+    ['{$issuer}', '签发 CA'],
+    ['{$expire_date}', '到期日期 YYYY-MM-DD HH:MM:SS'],
+    ['{$time}', '当前时间']
+  ];
+  var $varTipTrigger = document.getElementById('varTipTrigger');
+  var $varHelp = null;
+
+  function buildVarHelp() {
+    var pop = document.createElement('div');
+    pop.className = 'var-help-pop';
+    pop.setAttribute('hidden', '');
+    var rows = VAR_ROWS.map(function (r) {
+      return '<code tabindex="0" title="点击复制">' + r[0] + '</code><span>' + r[1] + '</span>';
+    }).join('');
+    pop.innerHTML =
+      '<div class="var-help-title"><i class="fas fa-circle-info"></i> 可用变量（点击变量名复制 · 发送时自动替换）</div>' +
+      '<div class="var-help-grid">' + rows + '</div>';
+    document.body.appendChild(pop);
+    attachVarHelpCopy(pop);
+    return pop;
+  }
+
+  // 点击 / 回车 复制 <code> 里的变量名到剪贴板，并短暂提示「已复制」
+  function attachVarHelpCopy(pop) {
+    function copyCode(code) {
+      var text = (code.textContent || '').trim();
+      if (!text || code.classList.contains('copied')) return;
+      var done = function () { flashCopied(code, text); };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done).catch(function () { legacyCopy(text); done(); });
+      } else {
+        legacyCopy(text);
+        done();
+      }
+    }
+    pop.addEventListener('click', function (e) {
+      var code = e.target.closest('code');
+      if (code) copyCode(code);
+    });
+    pop.addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      var code = e.target.closest('code');
+      if (code) { e.preventDefault(); copyCode(code); }
+    });
+  }
+
+  function legacyCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.top = '-1000px';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); } catch (_) {}
+    document.body.removeChild(ta);
+  }
+
+  function flashCopied(code, original) {
+    code.classList.add('copied');
+    code.textContent = '已复制';
+    clearTimeout(code._copyTimer);
+    code._copyTimer = setTimeout(function () {
+      code.classList.remove('copied');
+      code.textContent = original;
+    }, 900);
+  }
+
+  function positionVarHelp(anchor) {
+    var rect = anchor.getBoundingClientRect();
+    var popRect = $varHelp.getBoundingClientRect();
+    var margin = 8;
+    // 横向：默认右对齐到 ? 号右边，超出左边则左对齐
+    var left = rect.right - popRect.width;
+    if (left < 10) left = 10;
+    if (left + popRect.width > window.innerWidth - 10) {
+      left = window.innerWidth - popRect.width - 10;
+    }
+    // 纵向：默认往下；下面不够且上面够则往上
+    var top = rect.bottom + margin;
+    if (top + popRect.height > window.innerHeight - 10 &&
+        rect.top - popRect.height - margin > 10) {
+      top = rect.top - popRect.height - margin;
+    }
+    $varHelp.style.left = left + 'px';
+    $varHelp.style.top = top + 'px';
+  }
+
+  function toggleVarHelp() {
+    if (!$varHelp) $varHelp = buildVarHelp();
+    var willShow = $varHelp.hasAttribute('hidden');
+    if (willShow) {
+      $varHelp.removeAttribute('hidden');
+      positionVarHelp($varTipTrigger);
+    } else {
+      $varHelp.setAttribute('hidden', '');
+    }
+  }
+  function hideVarHelp() {
+    if ($varHelp) $varHelp.setAttribute('hidden', '');
+  }
+
+  if ($varTipTrigger) {
+    $varTipTrigger.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleVarHelp();
+    });
+  }
+  // 点外部关闭
+  document.addEventListener('click', function (e) {
+    if (!$varHelp || $varHelp.hasAttribute('hidden')) return;
+    if (!e.target.closest('.var-tip-trigger') && !e.target.closest('.var-help-pop')) {
+      hideVarHelp();
+    }
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') hideVarHelp();
+  });
+  window.addEventListener('scroll', hideVarHelp, true);
+  window.addEventListener('resize', hideVarHelp);
+
+  function loadNotifySettings() {
+    api('GET', '/api/settings').then(function (s) {
+      s = s || {};
+      webhooks.feishu = s.feishu_webhook || '';
+      webhooks.wecom  = s.wecom_webhook  || '';
+      var ch = s.notify_channel === 'wecom' ? 'wecom' : 'feishu';
+      document.querySelectorAll('input[name="notifyChannel"]').forEach(function (r) {
+        r.checked = r.value === ch;
+      });
+      applyChannelUI();
+
+      $notifyText.value = s.notify_text || DEFAULT_NOTIFY_TEXT;
+      var fmt = s.notify_format || 'text';
+      document.querySelectorAll('input[name="notifyFormat"]').forEach(function (r) {
+        r.checked = r.value === fmt;
+      });
+
+      // 条件 A：默认勾选、默认 30 天
+      $condA.checked = s.cond_a_enabled !== false;
+      $condADays.value = s.cond_a_days || 30;
+      // 条件 B：默认不勾选
+      $condB.checked = !!s.cond_b_enabled;
+      $condBCodes.value = s.cond_b_codes || '200,204,304';
+
+      updateNotifyCounter();
+    }).catch(function (err) {
+      toast('加载通知设置失败：' + err.message, 'error');
+    });
+  }
+
+  function saveNotifySettings() {
+    // 内存里再 sync 一次当前输入框
+    webhooks[currentChannel()] = $notifyWebhook.value.trim();
+
+    var fmt = 'text';
+    document.querySelectorAll('input[name="notifyFormat"]').forEach(function (r) {
+      if (r.checked) fmt = r.value;
+    });
+
+    var aOn = $condA.checked;
+    var bOn = $condB.checked;
+    if (!aOn && !bOn) {
+      toast('请至少启用一个推送条件', 'error');
+      return;
+    }
+    var aDays = parseInt($condADays.value, 10);
+    if (aOn && (!aDays || aDays <= 0)) {
+      toast('条件 A 的天数需为正整数', 'error');
+      $condADays.focus();
+      return;
+    }
+    var bCodes = ($condBCodes.value || '').trim();
+    if (bOn && !bCodes) {
+      toast('条件 B 的状态码列表不能为空', 'error');
+      $condBCodes.focus();
+      return;
+    }
+    // 校验状态码格式：只允许数字 + 逗号
+    if (bOn && !/^\d{3}(,\s*\d{3})*$/.test(bCodes)) {
+      toast('条件 B 状态码格式错误，应为 200,204,304 这种', 'error');
+      $condBCodes.focus();
+      return;
+    }
+
+    var body = {
+      notify_channel:  currentChannel(),
+      feishu_webhook:  webhooks.feishu,
+      wecom_webhook:   webhooks.wecom,
+      notify_format:   fmt,
+      notify_text:     $notifyText.value,
+      cond_a_enabled:  aOn,
+      cond_a_days:     aDays,
+      cond_b_enabled:  bOn,
+      cond_b_codes:    bCodes
+    };
+    $notifySave.disabled = true;
+    api('PUT', '/api/settings', body).then(function () {
+      toast('已保存', 'success');
+    }).catch(function (err) {
+      toast('保存失败：' + err.message, 'error');
+    }).finally(function () {
+      $notifySave.disabled = false;
+    });
+  }
+  $notifySave.addEventListener('click', saveNotifySettings);
 
   // ===== 启动 =====
   refreshAllTags().then(loadDomains);

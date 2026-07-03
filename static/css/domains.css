@@ -672,6 +672,259 @@ button.cert-tag:focus {
 
 .dlg-body { padding: 18px 24px 4px; }
 
+/* ===== 设置弹窗：选项卡 ===== */
+.settings-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 0 24px;
+  border-bottom: 1px solid rgba(64, 158, 255, 0.12);
+  margin-top: 14px;
+}
+.settings-tab {
+  appearance: none;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 10px 14px;
+  margin-bottom: -1px;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-family: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: color .15s, border-color .15s, background .15s;
+  border-radius: 6px 6px 0 0;
+}
+.settings-tab i { font-size: 12px; }
+.settings-tab:hover { color: var(--text-sub); }
+.settings-tab.active {
+  color: #fff;
+  border-bottom-color: var(--accent);
+}
+
+/* 面板切换 */
+.settings-panel { display: none; }
+.settings-panel.active { display: block; }
+
+/* ===== 通知管理表单 ===== */
+.notify-form .field label .opt {
+  margin-left: 6px;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ?号触发按钮：放在 .opt 里 */
+.var-tip-trigger {
+  appearance: none;
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  transition: color .15s;
+}
+.var-tip-trigger:hover { color: var(--accent-3); }
+
+/* 变量提示浮层（挂到 body 上，避免被 .dlg 的 overflow:hidden 裁切） */
+.var-help-pop {
+  position: fixed;
+  z-index: 300;
+  width:365px;
+  max-width: 92vw;
+  padding: 12px 14px;
+  background: #12264a;
+  border: 1px solid var(--border-strong);
+  border-radius: 9px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+.var-help-pop::before {
+  content: '';
+  position: absolute;
+  top: -6px;
+  right: 18px;
+  width: 10px;
+  height: 10px;
+  background: #12264a;
+  border-left: 1px solid var(--border-strong);
+  border-top: 1px solid var(--border-strong);
+  transform: rotate(45deg);
+}
+.var-help-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+.var-help-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 10px;
+  font-size: 11px;
+  line-height: 1.7;
+}
+.var-help-grid code {
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+  color: var(--accent-3);
+  background: rgba(64, 158, 255, 0.08);
+  padding: 1px 6px;
+  border-radius: 3px;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  width:130px;
+  transition: background .12s, color .12s;
+}
+.var-help-grid code:hover,
+.var-help-grid code:focus-visible {
+  background: rgba(64, 158, 255, 0.2);
+  color: #fff;
+  outline: none;
+}
+.var-help-grid code.copied {
+  background: rgba(34, 197, 94, 0.22);
+  color: var(--ok);
+}
+.var-help-grid span { color: var(--text-sub); }
+.radio-row {
+  display: flex;
+  gap: 10px;
+}
+.radio-opt {
+  flex: 1 1 0;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-sub);
+  padding: 8px 14px;
+  border: 1px solid rgba(64, 158, 255, 0.18);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.03);
+  transition: border-color .15s, background .15s, color .15s;
+  white-space: nowrap;
+}
+.radio-opt input {
+  accent-color: var(--accent);
+  cursor: pointer;
+  margin: 0;
+  outline: none;
+  flex-shrink: 0;
+}
+.radio-opt input:focus,
+.radio-opt input:focus-visible { outline: none; }
+.radio-opt:has(input:checked) {
+  border-color: var(--accent);
+  background: rgba(64, 158, 255, 0.12);
+  color: #fff;
+}
+
+.threshold-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-sub);
+}
+.threshold-row input {
+  width: 80px;
+  height: 34px;
+  padding: 0 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(64, 158, 255, 0.18);
+  border-radius: 7px;
+  color: #fff;
+  font-size: 14px;
+  font-family: inherit;
+  text-align: center;
+  outline: none;
+  transition: border-color .15s;
+}
+.threshold-row input:focus { border-color: var(--accent); }
+
+/* 推送平台切换：飞书 / 企业微信 二选一 */
+.channel-row { gap: 10px; }
+.channel-opt { padding: 10px 12px; }
+.channel-opt i { font-size: 14px; }
+
+/* 条件 A / B */
+.cond-row {
+  display: flex;
+  align-items: center;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(64, 158, 255, 0.14);
+  border-radius: 7px;
+  margin-bottom: 6px;
+  transition: border-color .15s, background .15s;
+}
+.cond-row:last-of-type { margin-bottom: 0; }
+.cond-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-sub);
+  user-select: none;
+}
+.cond-check input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.cond-text { color: var(--text-sub); }
+
+/* 条件内嵌的输入框 */
+.inline-input {
+  width: 88px;
+  height: 30px;
+  padding: 0 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(64, 158, 255, 0.22);
+  border-radius: 6px;
+  color: #fff;
+  font-size: 13px;
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+  outline: none;
+  text-align: center;
+  transition: border-color .15s, opacity .15s;
+}
+.inline-input.input-codes { width: 160px; text-align: left; }
+.inline-input:focus { border-color: var(--accent); }
+
+/* 未勾选条件 → 内嵌输入框淡化、不可编辑 */
+.cond-check:not(:has(input[type="checkbox"]:checked)) .inline-input {
+  opacity: .45;
+  pointer-events: none;
+}
+/* 已勾选条件 → 整行高亮 */
+.cond-row:has(input[type="checkbox"]:checked) {
+  border-color: rgba(64, 158, 255, 0.4);
+  background: rgba(64, 158, 255, 0.08);
+}
+
+/* 变量提示浮层（旧版，已迁移为 .var-help-pop 挂到 body） */
+
 .field { margin-bottom: 16px; }
 .field > label {
   display: block;
@@ -680,7 +933,8 @@ button.cert-tag:focus {
   color: #a0c4ee;
   margin-bottom: 6px;
 }
-.field-control input,
+/* 文本输入/文本域：排除 radio/checkbox/inline-input/number，避免被撑成 100% 宽 */
+.field-control input:not([type="radio"]):not([type="checkbox"]):not(.inline-input):not([type="number"]),
 .field-control textarea {
   width: 100%;
   background: rgba(255, 255, 255, 0.04);
@@ -696,9 +950,9 @@ button.cert-tag:focus {
 .field-control textarea {
   resize: none;
 }
-.field-control input::placeholder,
+.field-control input:not([type="radio"]):not([type="checkbox"]):not(.inline-input):not([type="number"])::placeholder,
 .field-control textarea::placeholder { color: #5a738f; }
-.field-control input:focus,
+.field-control input:not([type="radio"]):not([type="checkbox"]):not(.inline-input):not([type="number"]):focus,
 .field-control textarea:focus {
   border-color: #409eff;
   background: rgba(64, 158, 255, 0.05);
@@ -844,8 +1098,8 @@ button.cert-tag:focus {
   line-height: 1;
 }
 
-/* ===== 设置弹窗：标签管理 ===== */
-.dlg-settings { max-width: 480px; position: relative; }
+/* ===== 设置弹窗：标签管理 / 通知管理 ===== */
+.dlg-settings { max-width: 560px; position: relative; }
 
 /* 设置弹窗头部留出右上角空间给关闭按钮 */
 .dlg-settings .dlg-head {
