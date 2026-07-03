@@ -12,10 +12,6 @@ import (
 	"time"
 )
 
-// browserUA 是探测时伪装的浏览器 UA。默认 Go-http-client/1.1 会被很多站点 WAF
-// 当成爬虫直接 403，看不到真实状态码。
-const browserUA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
-
 type Result struct {
 	Host          string
 	Subject       string
@@ -115,7 +111,12 @@ func HTTPProbeTimeout(host string, port int, urlPath string, timeout time.Durati
 	if urlPath == "" {
 		urlPath = "/"
 	}
-	full := fmt.Sprintf("https://%s%s", net.JoinHostPort(host, fmt.Sprintf("%d", port)), urlPath)
+	// 默认端口不拼到 URL：某些 nginx/WAF 对 "host:443" 形式的 Host header 会返回 403
+	hostPart := host
+	if port != 0 && port != 443 {
+		hostPart = net.JoinHostPort(host, fmt.Sprintf("%d", port))
+	}
+	full := fmt.Sprintf("https://%s%s", hostPart, urlPath)
 	client := &http.Client{
 		Timeout: timeout,
 		// 不跟随重定向，直接看首次响应
@@ -123,12 +124,7 @@ func HTTPProbeTimeout(host string, port int, urlPath string, timeout time.Durati
 			return http.ErrUseLastResponse
 		},
 	}
-	req, err := http.NewRequest(http.MethodGet, full, nil)
-	if err != nil {
-		return &HTTPResult{Error: err.Error()}
-	}
-	req.Header.Set("User-Agent", browserUA)
-	resp, err := client.Do(req)
+	resp, err := client.Get(full)
 	if err != nil {
 		return &HTTPResult{Error: err.Error()}
 	}
