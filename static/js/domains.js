@@ -821,15 +821,41 @@
     var body = { url: url, notes: notes, tag_ids: tagIDs };
 
     var id = $formId.value;
+    var isNew = !id;
+    // 编辑前抓旧快照，用来判断 URL(host/port/path) 有没有变
+    var prevDomain = null;
+    if (id) {
+      var idNum = parseInt(id, 10);
+      prevDomain = state.domains.find(function (d) { return d.id === idNum; });
+    }
     var req = id
       ? api('PUT', '/api/domains/' + id, body)
       : api('POST', '/api/domains', body);
 
     $formSubmit.disabled = true;
-    req.then(function () {
+    req.then(function (resp) {
       Modal.close('domainModal');
-      toast(id ? '已更新' : '已添加', 'success');
-      loadDomains();
+      if (isNew && resp && resp.id) {
+        // 新增：列表刷新后立即触发一次检测
+        toast('已添加，正在检测…', 'success');
+        loadDomains().then(function () { doCheck(resp.id); });
+      } else if (id && resp) {
+        // 编辑：URL 变了才检测
+        var urlChanged = !prevDomain ||
+          prevDomain.host !== resp.host ||
+          prevDomain.port !== resp.port ||
+          prevDomain.path !== resp.path;
+        if (urlChanged) {
+          toast('已更新，URL 变了，正在检测…', 'success');
+          loadDomains().then(function () { doCheck(resp.id); });
+        } else {
+          toast('已更新', 'success');
+          loadDomains();
+        }
+      } else {
+        toast('已添加', 'success');
+        loadDomains();
+      }
     }).catch(function (err) {
       toast('保存失败：' + err.message, 'error');
     }).finally(function () {
@@ -857,8 +883,10 @@
   // 立即检测
   function doCheck(id, btn) {
     state.checkingIds[id] = true;
-    btn.classList.add('checking');
-    btn.disabled = true;
+    if (btn) {
+      btn.classList.add('checking');
+      btn.disabled = true;
+    }
     api('POST', '/api/domains/' + id + '/check').then(function (updated) {
       // 局部替换
       var idx = state.domains.findIndex(function (x) { return x.id === id; });

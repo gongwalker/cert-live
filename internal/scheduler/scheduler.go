@@ -76,9 +76,30 @@ func (s *Scheduler) RunOnce() {
 	s.scanAndPush()
 }
 
-// CheckOne 立即探测单个域名（API 手动触发用），结果写库。不影响后台循环。
+// CheckOne 立即探测单个域名（API 手动触发用），结果写库；
+// 满足推送条件时也触发一次通知（异步，不阻塞 API 响应）。不影响后台循环。
 func (s *Scheduler) CheckOne(domainID int64) {
-	s.probeOne(domainID)
+	rec, err := s.probeOne(domainID)
+	if err != nil || rec.ID == 0 {
+		return
+	}
+	go s.maybePushOne(rec)
+}
+
+// maybePushOne 单条记录的推送判定：读 settings → 解渠道 → 判条件 → 命中就推。
+func (s *Scheduler) maybePushOne(d model.Domain) {
+	settings := readSettings(s.st)
+	ch, tmpl, ok := resolveChannel(settings)
+	if !ok {
+		return
+	}
+	if !evalConds(d, settings, parseHTTPWhitelist(settings.NotifyCondBCodes)) {
+		return
+	}
+	rendered := notify.Render(tmpl, buildVars(d))
+	if err := ch.Send(rendered); err != nil {
+		log.Printf("notify: send %s: %v", d.Host, err)
+	}
 }
 
 // probeAll 并发探测所有域名，并发度受 probeParallel 控制。
@@ -101,7 +122,7 @@ func (s *Scheduler) probeAll(ctx context.Context) {
 		go func(domainID int64) {
 			defer wg.Done()
 			defer func() { <-sem }()
-			s.probeOne(domainID)
+			_, _ = s.probeOne(domainID)
 		}(id)
 	}
 	wg.Wait()
@@ -109,11 +130,12 @@ func (s *Scheduler) probeAll(ctx context.Context) {
 
 // probeOne 探测单个域名：TLS 拿证书 + HTTP 拿状态码，写回 domains 表。
 // 失败时只写 last_error，下一轮照样探（不做退避，靠 probe 内部的 10s 超时兜底）。
-func (s *Scheduler) probeOne(domainID int64) {
+// 返回写库后的最新记录（即便 probe 出错也会返回带 LastError 的 rec），供调用方做后续处理。
+func (s *Scheduler) probeOne(domainID int64) (model.Domain, error) {
 	dom, err := s.st.GetDomain(domainID)
 	if err != nil || dom == nil {
 		log.Printf("scheduler: get domain %d: %v", domainID, err)
-		return
+		return model.Domain{}, fmt.Errorf("get domain %d: %w", domainID, err)
 	}
 	now := time.Now().Unix()
 	res, err := probe.Probe(dom.Host, dom.Port)
@@ -124,7 +146,7 @@ func (s *Scheduler) probeOne(domainID int64) {
 		if e := s.st.UpdateDomainProbe(rec); e != nil {
 			log.Printf("scheduler: update probe for %s: %v", dom.Host, e)
 		}
-		return
+		return rec, nil
 	}
 
 	rec := *dom
@@ -149,57 +171,24 @@ func (s *Scheduler) probeOne(domainID int64) {
 	if e := s.st.UpdateDomainProbe(rec); e != nil {
 		log.Printf("scheduler: update probe for %s: %v", dom.Host, e)
 	}
+	return rec, nil
 }
 
 // scanAndPush 扫所有域名，命中条件 A 或 B 就立即推（不去重）。
 func (s *Scheduler) scanAndPush() {
 	settings := readSettings(s.st)
-	if !settings.NotifyCondAEnabled && !settings.NotifyCondBEnabled {
-		return // 至少要有一个条件启用
+	ch, tmpl, ok := resolveChannel(settings)
+	if !ok {
+		return // 条件全关 / webhook 未配置
 	}
-
-	// 当前激活平台的 webhook 必须有
-	var ch notify.Channel
-	switch settings.NotifyChannel {
-	case "wecom":
-		if settings.NotifyWeComWebhook == "" {
-			return
-		}
-		ch = notify.Channel{
-			Platform: notify.WeCom,
-			Webhook:  settings.NotifyWeComWebhook,
-			Format:   settings.NotifyWeComFormat,
-		}
-	default: // feishu 或未设置都走飞书
-		if settings.NotifyFeishuWebhook == "" {
-			return
-		}
-		ch = notify.Channel{
-			Platform: notify.Feishu,
-			Webhook:  settings.NotifyFeishuWebhook,
-			Format:   settings.NotifyFeishuFormat,
-		}
-	}
-
 	domains, err := s.st.ListDomains("", nil)
 	if err != nil {
 		log.Printf("scheduler: list domains: %v", err)
 		return
 	}
 	httpWhitelist := parseHTTPWhitelist(settings.NotifyCondBCodes)
-	tmpl := settings.NotifyFeishuText
-	if settings.NotifyChannel == "wecom" {
-		tmpl = settings.NotifyWeComText
-	}
-
 	for _, d := range domains {
-		// 探测失败 / 还没探测过：跳过，避免误报
-		if d.LastError != "" || d.NotAfter == 0 {
-			continue
-		}
-		hitA := settings.NotifyCondAEnabled && d.DaysRemaining < settings.NotifyCondADays
-		hitB := settings.NotifyCondBEnabled && !httpWhitelist[d.HTTPStatus]
-		if !hitA && !hitB {
+		if !evalConds(d, settings, httpWhitelist) {
 			continue
 		}
 		rendered := notify.Render(tmpl, buildVars(d))
@@ -207,6 +196,45 @@ func (s *Scheduler) scanAndPush() {
 			log.Printf("notify: send %s: %v", d.Host, err)
 		}
 	}
+}
+
+// resolveChannel 从 settings 解出当前激活渠道 + 对应模板。
+// 返回 ok=false 表示：条件 A/B 全未启用，或激活平台的 webhook 为空。
+func resolveChannel(settings model.Settings) (ch notify.Channel, tmpl string, ok bool) {
+	if !settings.NotifyCondAEnabled && !settings.NotifyCondBEnabled {
+		return notify.Channel{}, "", false
+	}
+	switch settings.NotifyChannel {
+	case "wecom":
+		if settings.NotifyWeComWebhook == "" {
+			return notify.Channel{}, "", false
+		}
+		return notify.Channel{
+			Platform: notify.WeCom,
+			Webhook:  settings.NotifyWeComWebhook,
+			Format:   settings.NotifyWeComFormat,
+		}, settings.NotifyWeComText, true
+	default: // feishu 或未设置都走飞书
+		if settings.NotifyFeishuWebhook == "" {
+			return notify.Channel{}, "", false
+		}
+		return notify.Channel{
+			Platform: notify.Feishu,
+			Webhook:  settings.NotifyFeishuWebhook,
+			Format:   settings.NotifyFeishuFormat,
+		}, settings.NotifyFeishuText, true
+	}
+}
+
+// evalConds 判定单条域名是否命中推送条件 A 或 B。
+// 探测失败 / 未探测过的直接判 false，避免误报。
+func evalConds(d model.Domain, settings model.Settings, httpWhitelist map[int]bool) bool {
+	if d.LastError != "" || d.NotAfter == 0 {
+		return false
+	}
+	hitA := settings.NotifyCondAEnabled && d.DaysRemaining < settings.NotifyCondADays
+	hitB := settings.NotifyCondBEnabled && !httpWhitelist[d.HTTPStatus]
+	return hitA || hitB
 }
 
 // parseHTTPWhitelist "200,204,304" → map[int]bool{200:true, ...}
