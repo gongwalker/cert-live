@@ -82,23 +82,23 @@ func DefaultSettings() Settings {
 	}
 }
 
-const defaultFeishuText = `## 🔔 证书到期提醒
+const defaultFeishuText = `## 证书到期提醒
 - **主机**：{$host}
 - **网址**：{$url}
-- **说明**：{$notes}
+- **标签**：{$tags}
 - **剩余**：**{$days} 天**
 - **到期**：{$expire_date}
-- **签发 CA**：{$issuer}
 - **HTTP**：{$http_status}
+- **说明**：{$notes}
 
 > 提醒时间 {$time}`
 
 const defaultWeComText = `# 证书到期提醒
 主机：{$host}
 网址：{$url}
-说明：{$notes}
+标签：{$tags}
 剩余天数：{$days} 天
 到期日期：{$expire_date}
-签发 CA：{$issuer}
 HTTP 状态：{$http_status}
+说明：{$notes}
 提醒时间：{$time}`

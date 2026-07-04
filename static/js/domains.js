@@ -1238,14 +1238,14 @@
   };
 
   var DEFAULT_FEISHU_TEXT =
-    '## 🔔 证书到期提醒\n' +
+    '## 证书到期提醒\n' +
     '- **主机**：{$host}\n' +
     '- **网址**：{$url}\n' +
-    '- **说明**：{$notes}\n' +
+    '- **标签**：{$tags}\n' +
     '- **剩余**：**{$days} 天**\n' +
     '- **到期**：{$expire_date}\n' +
-    '- **签发 CA**：{$issuer}\n' +
     '- **HTTP**：{$http_status}\n' +
+    '- **说明**：{$notes}\n' +
     '\n' +
     '> 提醒时间 {$time}';
 
@@ -1253,11 +1253,11 @@
     '# 证书到期提醒\n' +
     '主机：{$host}\n' +
     '网址：{$url}\n' +
-    '说明：{$notes}\n' +
+    '标签：{$tags}\n' +
     '剩余天数：{$days} 天\n' +
     '到期日期：{$expire_date}\n' +
-    '签发 CA：{$issuer}\n' +
     'HTTP 状态：{$http_status}\n' +
+    '说明：{$notes}\n' +
     '提醒时间：{$time}';
 
   function currentChannel() {
