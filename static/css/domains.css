@@ -127,6 +127,16 @@ body {
   font-weight: 500;
 }
 .toolbar-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+/* 工具栏里的按钮 / 搜索框统一几何（高度、圆角、字号、行高、边框宽度全对齐） */
+.toolbar-right .btn,
+.toolbar-right .search-box input {
+  height: 36px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1;
+  border-width: 1px;
+  border-style: solid;
+}
 
 .search-box {
   position: relative;
@@ -193,10 +203,10 @@ body {
 }
 .btn:active { transform: translateY(1px); }
 .btn-primary {
-  background: linear-gradient(90deg, var(--accent-2), var(--accent-3));
+  background: var(--accent);
   color: #fff;
 }
-.btn-primary:hover { box-shadow: 0 4px 14px rgba(64, 170, 255, 0.4); }
+.btn-primary:hover { background: var(--accent-2); }
 
 /* ===== 工具栏标签筛选 ===== */
 .tag-filter {
