@@ -288,12 +288,12 @@
                 <div class="cond-row">
                   <label class="cond-check">
                     <input type="checkbox" id="condB">
-                    <span class="cond-text">条件 B：HTTP 状态码不在</span>
-                    <input type="text" id="condBCodes" value="200,204,304" placeholder="200,204,304" class="inline-input input-codes">
+                    <span class="cond-text">条件 B：HTTP 状态码<button type="button" class="var-tip-trigger" id="statusCodeTipTrigger" title="点此查看状态码说明"><i class="fas fa-circle-question"></i></button>不在</span>
+                    <input type="text" id="condBCodes" value="200,201,204,301,302,304,307,308" placeholder="200,201,204,301,302,304,307,308" class="inline-input input-codes">
                     <span class="cond-text">列表中</span>
                   </label>
                 </div>
-                <p class="field-help">启用的条件任一命中即触发推送；HTTP 状态码用英文逗号分隔多个，如 200,204,304</p>
+                <p class="field-help">启用的条件任一命中即触发推送；HTTP 状态码用英文逗号分隔多个，如 200,201,204,301,302,304,307,308</p>
               </div>
             </div>
 

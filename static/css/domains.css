@@ -760,13 +760,22 @@ button.cert-tag:focus {
   content: '';
   position: absolute;
   top: -6px;
-  right: 18px;
+  left: var(--arrow-x, 18px);
   width: 10px;
   height: 10px;
   background: #12264a;
   border-left: 1px solid var(--border-strong);
   border-top: 1px solid var(--border-strong);
   transform: rotate(45deg);
+}
+/* 浮层翻到触发器上方时，三角挪到底边、改用底/右边框，朝下指向 ? */
+.var-help-pop.pop-above::before {
+  top: auto;
+  bottom: -6px;
+  border-top: none;
+  border-left: none;
+  border-bottom: 1px solid var(--border-strong);
+  border-right: 1px solid var(--border-strong);
 }
 .var-help-title {
   display: flex;
@@ -806,6 +815,52 @@ button.cert-tag:focus {
   color: var(--ok);
 }
 .var-help-grid span { color: var(--text-sub); }
+
+/* 状态码说明浮层：场景对照表 */
+.status-help-pop { width: 420px; }
+.status-help-head,
+.status-help-row {
+  display: grid;
+  grid-template-columns: 1fr 1.5fr;
+  gap: 10px;
+  align-items: start;
+  padding: 5px 0;
+  font-size: 11.5px;
+  line-height: 1.6;
+}
+.status-help-head {
+  color: var(--text-muted);
+  font-size: 11px;
+  border-bottom: 1px solid rgba(64, 158, 255, 0.14);
+  padding-bottom: 6px;
+  margin-bottom: 2px;
+}
+.status-help { display: flex; flex-direction: column; gap: 1px; }
+.status-help-row span { color: var(--text-sub); word-break: break-all; }
+.status-help-row code {
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+  color: var(--accent-3);
+  background: rgba(64, 158, 255, 0.08);
+  padding: 1px 6px;
+  border-radius: 3px;
+  display: inline-block;
+  word-break: break-all;
+}
+.status-help-hint {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(64, 158, 255, 0.14);
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.7;
+}
+.status-help-hint code {
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+  color: var(--accent-3);
+  background: rgba(64, 158, 255, 0.08);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
 .radio-row {
   display: flex;
   gap: 10px;

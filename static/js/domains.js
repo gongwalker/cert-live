@@ -1400,6 +1400,18 @@
     }, 900);
   }
 
+  // 同步浮层小三角：横向跟着 ? 号中心走，纵向随翻转到顶部/底部
+  function syncArrow(pop, triggerRect, popLeft, above) {
+    var popRect = pop.getBoundingClientRect();
+    var triggerCenterX = triggerRect.left + triggerRect.width / 2;
+    var arrowLeft = triggerCenterX - popLeft - 5; // ::before 宽 10px，居中对齐触发器中心
+    var minA = 12, maxA = popRect.width - 22;
+    if (arrowLeft < minA) arrowLeft = minA;
+    if (arrowLeft > maxA) arrowLeft = maxA;
+    pop.style.setProperty('--arrow-x', arrowLeft + 'px');
+    pop.classList.toggle('pop-above', !!above);
+  }
+
   function positionVarHelp(anchor) {
     var rect = anchor.getBoundingClientRect();
     var popRect = $varHelp.getBoundingClientRect();
@@ -1412,12 +1424,15 @@
     }
     // 纵向：默认往下；下面不够且上面够则往上
     var top = rect.bottom + margin;
+    var above = false;
     if (top + popRect.height > window.innerHeight - 10 &&
         rect.top - popRect.height - margin > 10) {
       top = rect.top - popRect.height - margin;
+      above = true;
     }
     $varHelp.style.left = left + 'px';
     $varHelp.style.top = top + 'px';
+    syncArrow($varHelp, rect, left, above);
   }
 
   function toggleVarHelp() {
@@ -1438,6 +1453,7 @@
     $varTipTrigger.addEventListener('click', function (e) {
       e.preventDefault();
       e.stopPropagation();
+      hideStatusCodeHelp();
       toggleVarHelp();
     });
   }
@@ -1449,10 +1465,90 @@
     }
   });
   document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') hideVarHelp();
+    if (e.key === 'Escape') { hideVarHelp(); hideStatusCodeHelp(); }
   });
-  window.addEventListener('scroll', hideVarHelp, true);
-  window.addEventListener('resize', hideVarHelp);
+  window.addEventListener('scroll', function () { hideVarHelp(); hideStatusCodeHelp(); }, true);
+  window.addEventListener('resize', function () { hideVarHelp(); hideStatusCodeHelp(); });
+
+  // 状态码说明 ? 号浮层（与变量浮层互斥：开一个关另一个）
+  var STATUS_SCENES = [
+    ['纯静态资源 / 简单 API（无重定向）', '200,204,304'],
+    ['通用网站（可能含重定向）', '200,201,204,301,302,304,307,308'],
+    ['不在意重定向告警，要求严格', '200,204,304'],
+    ['监控的是登录后的接口（401 算正常）', '200,201,204,301,302,304,307,308,401']
+  ];
+  var $statusCodeTipTrigger = document.getElementById('statusCodeTipTrigger');
+  var $statusCodeHelp = null;
+
+  function buildStatusCodeHelp() {
+    var pop = document.createElement('div');
+    pop.className = 'var-help-pop status-help-pop';
+    pop.setAttribute('hidden', '');
+    var rows = STATUS_SCENES.map(function (s) {
+      return '<div class="status-help-row">' +
+               '<span>' + s[0] + '</span>' +
+               '<code>' + s[1] + '</code>' +
+             '</div>';
+    }).join('');
+    pop.innerHTML =
+      '<div class="var-help-title"><i class="fas fa-circle-info"></i> HTTP 状态码说明</div>' +
+      '<div class="status-help-head"><span>场景</span><span>推荐白名单</span></div>' +
+      '<div class="status-help">' + rows + '</div>' +
+      '<div class="status-help-hint"><code>200,201,204,301,302,304,307,308</code>（语义上健康的状态码）</div>';
+    document.body.appendChild(pop);
+    return pop;
+  }
+
+  function positionStatusCodeHelp() {
+    var rect = $statusCodeTipTrigger.getBoundingClientRect();
+    var popRect = $statusCodeHelp.getBoundingClientRect();
+    var margin = 8;
+    var left = rect.left;
+    if (left + popRect.width > window.innerWidth - 10) {
+      left = window.innerWidth - popRect.width - 10;
+    }
+    if (left < 10) left = 10;
+    var top = rect.bottom + margin;
+    var above = false;
+    if (top + popRect.height > window.innerHeight - 10 &&
+        rect.top - popRect.height - margin > 10) {
+      top = rect.top - popRect.height - margin;
+      above = true;
+    }
+    $statusCodeHelp.style.left = left + 'px';
+    $statusCodeHelp.style.top = top + 'px';
+    syncArrow($statusCodeHelp, rect, left, above);
+  }
+
+  function toggleStatusCodeHelp() {
+    if (!$statusCodeHelp) $statusCodeHelp = buildStatusCodeHelp();
+    var willShow = $statusCodeHelp.hasAttribute('hidden');
+    if (willShow) {
+      $statusCodeHelp.removeAttribute('hidden');
+      positionStatusCodeHelp();
+    } else {
+      $statusCodeHelp.setAttribute('hidden', '');
+    }
+  }
+
+  function hideStatusCodeHelp() {
+    if ($statusCodeHelp) $statusCodeHelp.setAttribute('hidden', '');
+  }
+
+  if ($statusCodeTipTrigger) {
+    $statusCodeTipTrigger.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      hideVarHelp();
+      toggleStatusCodeHelp();
+    });
+  }
+  document.addEventListener('click', function (e) {
+    if (!$statusCodeHelp || $statusCodeHelp.hasAttribute('hidden')) return;
+    if (!e.target.closest('#statusCodeTipTrigger') && !e.target.closest('.status-help-pop')) {
+      hideStatusCodeHelp();
+    }
+  });
 
   function loadNotifySettings() {
     api('GET', '/api/settings').then(function (s) {
@@ -1478,7 +1574,7 @@
       $condADays.value = s.notify_cond_a_days || 30;
       // 条件 B：默认不勾选
       $condB.checked = !!s.notify_cond_b_enabled;
-      $condBCodes.value = s.notify_cond_b_codes || '200,204,304';
+      $condBCodes.value = s.notify_cond_b_codes || '200,201,204,301,302,304,307,308';
 
       updateNotifySaveState();
     }).catch(function (err) {
@@ -1519,7 +1615,7 @@
     }
     // 校验状态码格式：只允许数字 + 逗号
     if (bOn && !/^\d{3}(,\s*\d{3})*$/.test(bCodes)) {
-      toast('条件 B 状态码格式错误，应为 200,204,304 这种', 'error');
+      toast('条件 B 状态码格式错误，应为 200,201,204,301 这种', 'error');
       $condBCodes.focus();
       return;
     }

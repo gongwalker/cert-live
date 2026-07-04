@@ -54,7 +54,7 @@ type Settings struct {
 	NotifyCondAEnabled bool `json:"notify_cond_a_enabled"`
 	NotifyCondADays    int  `json:"notify_cond_a_days"`
 	NotifyCondBEnabled bool `json:"notify_cond_b_enabled"`
-	NotifyCondBCodes   string `json:"notify_cond_b_codes"` // 逗号分隔，如 "200,204,304"
+	NotifyCondBCodes   string `json:"notify_cond_b_codes"` // 逗号分隔，如 "200,201,204,301,302,304,307,308"
 
 	// 通用设置
 	CycleIntervalMin int `json:"cycle_interval_min"` // 探测 + 推送 整体周期（分钟）
@@ -76,7 +76,7 @@ func DefaultSettings() Settings {
 		NotifyCondAEnabled: true,
 		NotifyCondADays:    30,
 		NotifyCondBEnabled: false,
-		NotifyCondBCodes:   "200,204,304",
+		NotifyCondBCodes:   "200,201,204,301,302,304,307,308",
 
 		CycleIntervalMin: 20,
 	}
