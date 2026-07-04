@@ -8,8 +8,9 @@ RUN go build -trimpath -ldflags="-s -w" -o cert-live
 
 FROM alpine:latest
 # ca-certificates：HTTPS 探测目标站点校验证书需要根 CA
-# tzdata：日志本地时区
+# tzdata：/usr/share/zoneinfo 时区数据,配合下面的 TZ 让日志走 CST
 RUN apk add --no-cache ca-certificates tzdata
+ENV TZ=Asia/Shanghai
 WORKDIR /app
 # 二进制已用 go:embed 内嵌 templates 和 static，无需再 COPY 资源文件
 COPY --from=builder /app/cert-live .

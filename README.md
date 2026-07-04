@@ -175,6 +175,8 @@ make status      # 查看运行状态
 
 三种姿势按需选:**方式一**(拉公共镜像,最快) / **方式二**(本地构建 + docker run) / **方式三**(docker-compose)。
 
+> ⚠️ **docker 默认不切割日志**,容器跑久了 stdout 全堆在 `/var/lib/docker/containers/<id>/<id>-json.log`,会把宿主机根分区撑爆。下面三种方式都配了日志轮转(单文件 10MB、最多 3 个、滚动覆盖,上限约 30MB),需要更长历史可调 `max-size` / `max-file`。
+
 ### 方式一:从 Docker Hub 拉镜像(推荐)
 
 不用 clone 代码、不用本地构建,直接拉公共镜像跑起来:
@@ -188,6 +190,9 @@ docker run -d \
   --name cert-live \
   --restart unless-stopped \
   -p 8080:8080 \
+  --log-driver json-file \
+  --log-opt max-size=10m \
+  --log-opt max-file=3 \
   -v /etc/localtime:/etc/localtime:ro \
   -v "$(pwd)/data:/app/data" \
   -e GIN_MODE=release \
@@ -204,6 +209,9 @@ docker run -d \
 ```bash
 docker run -d --name cert-live \
   -p 8080:8080 \
+  --log-driver json-file \
+  --log-opt max-size=10m \
+  --log-opt max-file=3 \
   -v "$(pwd)/data:/app/data" \
   -e SESSION_SECRET="$(openssl rand -hex 32)" \
   -e ADMIN_USER=admin \
@@ -230,6 +238,9 @@ docker run -d \
   --name cert-live \
   --restart unless-stopped \
   -p 8080:8080 \
+  --log-driver json-file \
+  --log-opt max-size=10m \
+  --log-opt max-file=3 \
   -v /etc/localtime:/etc/localtime:ro \
   -v /etc/timezone:/etc/timezone:ro \
   -v "$(pwd)/data:/app/data" \
@@ -242,6 +253,7 @@ docker run -d \
 
 要点(方式一/二通用):
 - **`-p 8080:8080`**:宿主机端口:容器端口,两边一致就行,要改一起改(还要带 `-e APP_PORT=同端口`)
+- **`--log-driver json-file --log-opt ...`**:日志驱动 + 滚动策略。docker 默认不切割日志,长跑会撑爆硬盘,务必带上(详见上面那节开头的警告)
 - **`-v "$(pwd)/data:/app/data"`**:SQLite 文件持久化,容器删了数据还在
 - **`-v /etc/localtime`**:宿主机时区同步到容器(镜像里也装了 `tzdata` 兜底)
 - **`SESSION_SECRET`**:必填,cookie 签名密钥,**生产一定要换成强随机串**
@@ -258,6 +270,12 @@ services:
     # build: .                            # 想本地构建就注释掉 image,放开 build
     container_name: cert-live
     restart: unless-stopped
+    # 日志轮转:单文件 10MB,最多 3 个,满了滚动覆盖(约上限 30MB)
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     ports:
       - "8080:8080"
     volumes:
