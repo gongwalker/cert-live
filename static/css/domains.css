@@ -1052,6 +1052,7 @@ button.cert-tag:focus {
   margin-top: 4px;
   border-top: 1px solid rgba(64, 158, 255, 0.08);
 }
+.backup-row { display: flex; gap: 10px; flex-wrap: wrap; }
 
 .btn-ghost,
 .btn-solid {

@@ -1206,6 +1206,72 @@
   }
   $generalSave.addEventListener('click', saveGeneralSettings);
 
+  // ===== 通用设置：数据库备份 / 导入 =====
+  var $backupBtn   = document.getElementById('backupBtn');
+  var $restoreBtn  = document.getElementById('restoreBtn');
+  var $restoreFile = document.getElementById('restoreFile');
+
+  // 备份：服务端已设 Content-Disposition: attachment，直接导航即可触发下载（带 Cookie）
+  if ($backupBtn) {
+    $backupBtn.addEventListener('click', function () {
+      window.location.href = '/api/backup';
+    });
+  }
+
+  // 导入：按钮 → 隐藏 file picker → 自定义确认弹窗 → 上传 → 重载
+  var $restoreConfirm = document.getElementById('restoreConfirmBtn');
+  var $restoreFileName = document.getElementById('restoreFileName');
+  var pendingRestoreFile = null;
+
+  function doRestore(file) {
+    var fd = new FormData();
+    fd.append('file', file);
+    $restoreBtn.disabled = true;
+    $backupBtn.disabled = true;
+    toast('正在导入，请稍候…', 'info');
+    fetch('/api/restore', { method: 'POST', body: fd, credentials: 'same-origin' })
+      .then(function (r) { return r.json().catch(function () { throw new Error('响应不是合法 JSON'); }); })
+      .then(function (res) {
+        if (res && res.code === 200) {
+          toast('导入成功，正在刷新…', 'success');
+          setTimeout(function () { location.reload(); }, 800);
+        } else {
+          throw new Error(res && res.message ? res.message : '未知错误');
+        }
+      })
+      .catch(function (err) {
+        toast('导入失败：' + err.message, 'error');
+      })
+      .finally(function () {
+        $restoreBtn.disabled = false;
+        $backupBtn.disabled = false;
+      });
+  }
+
+  if ($restoreBtn && $restoreFile) {
+    $restoreBtn.addEventListener('click', function () {
+      $restoreFile.value = '';
+      $restoreFile.click();
+    });
+    $restoreFile.addEventListener('change', function () {
+      var file = this.files && this.files[0];
+      if (!file) return;
+      pendingRestoreFile = file;
+      if ($restoreFileName) $restoreFileName.textContent = file.name;
+      window.Modal.open('restoreModal');
+    });
+  }
+
+  if ($restoreConfirm) {
+    $restoreConfirm.addEventListener('click', function () {
+      var file = pendingRestoreFile;
+      pendingRestoreFile = null;
+      window.Modal.close('restoreModal');
+      if ($restoreFile) $restoreFile.value = '';
+      if (file) doRestore(file);
+    });
+  }
+
   // ===== 通知管理：加载 / 保存 =====
   var $notifyWebhook = document.getElementById('notifyWebhook');
   var $channelLabel  = document.getElementById('channelLabel');
@@ -1236,6 +1302,9 @@
     feishu: { webhook: '', format: 'text', text: '' },
     wecom:  { webhook: '', format: 'text', text: '' }
   };
+  // 当前在 UI 上显示的渠道（radio 的 change 事件触发时 DOM 已切到新的，
+  // 靠这个变量才能把旧渠道的 UI 值正确存回 store）
+  var activeChannel = 'feishu';
 
   var DEFAULT_FEISHU_TEXT =
     '## 证书到期提醒\n' +
@@ -1261,8 +1330,7 @@
     '提醒时间：{$time}';
 
   function currentChannel() {
-    var checked = document.querySelector('input[name="notifyChannel"]:checked');
-    return checked ? checked.value : 'feishu';
+    return activeChannel;
   }
 
   function applyChannelUI() {
@@ -1294,11 +1362,12 @@
     };
   }
 
-  // 切换平台 → 先存当前 → 再加载新平台
+  // 切换平台 → 先存当前（旧渠道）→ 切 activeChannel → 再加载新平台
   document.querySelectorAll('input[name="notifyChannel"]').forEach(function (r) {
     r.addEventListener('change', function () {
-      syncCurrentToStore();
-      applyChannelUI();
+      syncCurrentToStore();        // activeChannel 还是旧的，存到旧渠道槽位
+      activeChannel = r.value;     // 切到新选中的渠道
+      applyChannelUI();            // 从新渠道槽位加载到 UI
     });
   });
   // 三个字段实时同步到 store
@@ -1564,6 +1633,7 @@
         text:    s.notify_wecom_text    || DEFAULT_WECOM_TEXT
       };
       var ch = s.notify_channel === 'wecom' ? 'wecom' : 'feishu';
+      activeChannel = ch;
       document.querySelectorAll('input[name="notifyChannel"]').forEach(function (r) {
         r.checked = r.value === ch;
       });

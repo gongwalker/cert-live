@@ -197,6 +197,22 @@
               </div>
             </div>
 
+            <div class="field">
+              <label>数据库备份 / 导入</label>
+              <div class="field-control">
+                <div class="backup-row">
+                  <button type="button" class="btn-solid" id="backupBtn">
+                    <i class="fas fa-download"></i> 备份数据库
+                  </button>
+                  <button type="button" class="btn-ghost" id="restoreBtn">
+                    <i class="fas fa-upload"></i> 导入数据库
+                  </button>
+                  <input type="file" id="restoreFile" accept=".db,.sqlite,.sqlite3,application/octet-stream" hidden>
+                </div>
+                <p class="field-help">备份导出全部数据为 .db 文件；导入会用备份文件覆盖当前数据，操作前请先备份。</p>
+              </div>
+            </div>
+
             <div class="dlg-actions">
               <button type="button" class="btn-solid" id="generalSaveBtn">保存设置</button>
             </div>
@@ -302,6 +318,19 @@
             </div>
           </div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 导入数据库确认弹窗（放在最后，确保叠在设置弹窗之上） -->
+  <div class="modal-overlay" id="restoreModal" aria-hidden="true">
+    <div class="modal-card">
+      <div class="modal-icon danger"><i class="fas fa-triangle-exclamation"></i></div>
+      <h3 class="modal-title">确认导入该数据库？</h3>
+      <p class="modal-desc">将用 <b id="restoreFileName">--</b> 覆盖当前所有数据（域名、标签、设置、账号），不可恢复</p>
+      <div class="modal-actions">
+        <button class="modal-btn modal-cancel" type="button" data-modal-close>取消</button>
+        <button class="modal-btn modal-confirm" type="button" id="restoreConfirmBtn"><i class="fas fa-check"></i>确认导入</button>
       </div>
     </div>
   </div>
