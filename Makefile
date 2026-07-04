@@ -1,9 +1,14 @@
-APP      := cert-live
-PORT     := 8080
-PID_FILE := .run/$(APP).pid
-LOG_FILE := logs/app.log
+APP        := cert-live
+PORT       := 8080
+PID_FILE   := .run/$(APP).pid
+LOG_FILE   := logs/app.log
+# Docker Hub 用户名(改成你自己的);VERSION 优先用 git tag,失败则退到 commit hash
+DOCKER_USER   ?= gongwen
+VERSION       ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+# buildx builder 名,使用 docker-container driver(支持多架构)。OrbStack/Docker Desktop 默认的 docker driver 不支持
+BUILDX_BUILDER ?= cert-live-builder
 
-.PHONY: help build run start stop restart status clean tidy reset-admin
+.PHONY: help build run start stop restart status clean tidy reset-admin docker-image docker-push docker-buildx-init
 
 help: ## 显示帮助
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -62,3 +67,23 @@ reset-admin: ## 重置登录账号 / 密码（交互式；非交互式用 make r
 		echo "二进制 $(APP) 不存在，请先 make build"; \
 		exit 1; \
 	fi
+
+docker-image: ## 本地构建镜像(单架构,不推送)。可覆盖:make docker-image DOCKER_USER=foo VERSION=v1
+	docker build \
+		-t $(DOCKER_USER)/$(APP):latest \
+		-t $(DOCKER_USER)/$(APP):$(VERSION) \
+		.
+
+docker-buildx-init: ## 创建支持多架构的 buildx builder(docker-container driver,只需一次)
+	@docker buildx inspect $(BUILDX_BUILDER) >/dev/null 2>&1 || \
+		docker buildx create --name $(BUILDX_BUILDER) --driver docker-container --use
+	@docker buildx use $(BUILDX_BUILDER)
+	@echo "buildx builder 就绪: $(BUILDX_BUILDER) (driver=docker-container)"
+
+docker-push: docker-buildx-init ## 多架构构建并推送到 Docker Hub(amd64 + arm64)。需先 docker login
+	docker buildx build \
+		--builder $(BUILDX_BUILDER) \
+		--platform linux/amd64,linux/arm64 \
+		-t $(DOCKER_USER)/$(APP):latest \
+		-t $(DOCKER_USER)/$(APP):$(VERSION) \
+		--push .

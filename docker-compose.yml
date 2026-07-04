@@ -1,23 +1,24 @@
 services:
   cert-live:
-    build: .
-    image: cert-live:latest
+    # 默认从 Docker Hub 拉公共镜像(gongwen/cert-live),支持 amd64/arm64 双架构
+    # 想本地构建就把下一行注释掉,放开再下面那行
+    image: gongwen/cert-live:latest
+    # build: .
     container_name: cert-live
     restart: unless-stopped
     ports:
-      - "9527:9527"
+      - "8080:8080"
     volumes:
-      # 数据库文件持久化（容器删了数据还在）
+      # 数据库文件持久化(容器删了数据还在)
       - ./data:/app/data
-      # 同步宿主机时区（镜像里也装了 tzdata 兜底）
+      # 同步宿主机时区(镜像里也装了 tzdata 兜底)
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
     environment:
-      # ⚠️ 生产部署务必改成强随机的 SESSION_SECRET（openssl rand -hex 32）
+      # ⚠️ 生产部署务必改成强随机的 SESSION_SECRET(openssl rand -hex 32)
       - SESSION_SECRET=please-change-me-to-a-long-random-string
       - ADMIN_USER=admin
       - ADMIN_PASS=admin123
-      - APP_PORT=9527
       - GIN_MODE=release
       - DB_PATH=/app/data/certlive.db
       - TZ=Asia/Shanghai

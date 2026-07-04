@@ -28,8 +28,9 @@ body {
                "PingFang SC", "Hiragino Sans GB", sans-serif;
   background: linear-gradient(135deg, var(--bg-from) 0%, var(--bg-mid) 50%, var(--bg-to) 100%);
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;      /* 改成纵向,让 footer 能被顶到最底 */
+  align-items: center;         /* 水平居中 */
+  justify-content: flex-start; /* 不再整体居中,由 login-wrap flex:1 自己居中卡片 */
   position: relative;
   color: var(--text-main);
   -webkit-font-smoothing: antialiased;
@@ -69,6 +70,10 @@ body {
 .login-wrap {
   position: relative;
   z-index: 10;
+  flex: 1 1 auto;              /* 撑满 body 减去 footer 后的剩余空间 */
+  display: flex;               /* 内部把 card 居中 */
+  align-items: center;
+  justify-content: center;
   width: 100%;
   max-width: clamp(440px, 32vw, 600px);
   padding: 20px;
@@ -215,17 +220,15 @@ body {
 
 /* ===== 页面底版权 ===== */
 .page-footer {
-  position: absolute;
-  bottom: 20px;
-  left: 0;
-  right: 0;
+  position: static;            /* 从 absolute 改回流内,被 flex:1 顶到底部 */
+  flex-shrink: 0;              /* 不允许被压缩 */
   z-index: 10;
   text-align: center;
   font-size: 11px;
   color: #6a8bb8;
   letter-spacing: .3px;
   line-height: 1.7;
-  padding: 0 20px;
+  padding: 12px 20px 20px;     /* 顶 12 / 底 20,保持原视觉间距 */
 }
 .page-footer .dot {
   margin: 0 6px;

@@ -171,26 +171,68 @@ make status      # 查看运行状态
 
 ## Docker 部署
 
-镜像多阶段构建：`golang:1.25-alpine` 编译 → `alpine:latest` 运行。最终镜像约 30 MB，二进制用 `go:embed` 把模板和静态资源烤进去，只剩一个可执行文件 + SQLite 数据卷。
+镜像已发布到 Docker Hub:[`gongwen/cert-live`](https://hub.docker.com/r/gongwen/cert-live),支持 `linux/amd64` + `linux/arm64` 双架构。多阶段构建:`golang:1.25-alpine` 编译 → `alpine:latest` 运行,最终镜像约 30 MB,二进制用 `go:embed` 把模板和静态资源烤进去,只剩一个可执行文件 + SQLite 数据卷。
 
-### 方式一：`docker run`（一行命令）
+三种姿势按需选:**方式一**(拉公共镜像,最快) / **方式二**(本地构建 + docker run) / **方式三**(docker-compose)。
+
+### 方式一:从 Docker Hub 拉镜像(推荐)
+
+不用 clone 代码、不用本地构建,直接拉公共镜像跑起来:
 
 ```bash
-# 1. 在宿主机建数据目录
-mkdir -p ./data
+# 1. 建数据目录
+mkdir -p ./data && cd ./data && cd ..
 
-# 2. 拉镜像 / 或本地构建
+# 2. 一行起容器
+docker run -d \
+  --name cert-live \
+  --restart unless-stopped \
+  -p 8080:8080 \
+  -v /etc/localtime:/etc/localtime:ro \
+  -v "$(pwd)/data:/app/data" \
+  -e GIN_MODE=release \
+  -e SESSION_SECRET="$(openssl rand -hex 32)" \
+  -e ADMIN_USER=admin \
+  -e ADMIN_PASS=StrongPass123 \
+  gongwen/cert-live:latest
+```
+
+浏览器开 `http://localhost:8080` 登录。
+
+**指定版本**(生产推荐,方便回滚):
+
+```bash
+docker run -d --name cert-live \
+  -p 8080:8080 \
+  -v "$(pwd)/data:/app/data" \
+  -e SESSION_SECRET="$(openssl rand -hex 32)" \
+  -e ADMIN_USER=admin \
+  -e ADMIN_PASS=StrongPass123 \
+  gongwen/cert-live:v1.0.0
+```
+
+版本号跟 GitHub release 一一对应,见 [Tags 页面](https://hub.docker.com/r/gongwen/cert-live/tags)。
+
+### 方式二:本地构建 + `docker run`
+
+适合要改代码、或拿不到 Docker Hub 的场景:
+
+```bash
+# 1. clone 代码
+git clone https://github.com/gongwalker/cert-live.git
+cd cert-live
+
+# 2. 本地构建
 docker build -t cert-live:latest .
 
 # 3. 起容器
 docker run -d \
   --name cert-live \
   --restart unless-stopped \
-  -p 9527:9527 \
+  -p 8080:8080 \
   -v /etc/localtime:/etc/localtime:ro \
   -v /etc/timezone:/etc/timezone:ro \
   -v "$(pwd)/data:/app/data" \
-  -e APP_PORT=9527 \
   -e GIN_MODE=release \
   -e SESSION_SECRET="$(openssl rand -hex 32)" \
   -e ADMIN_USER=admin \
@@ -198,32 +240,31 @@ docker run -d \
   cert-live:latest
 ```
 
-要点：
-- **`-p 9527:9527`**：宿主机端口:容器端口，两边一致就行，要改一起改（还要带 `-e APP_PORT=同端口`）
-- **`-v "$(pwd)/data:/app/data"`**：SQLite 文件持久化，容器删了数据还在
-- **`-v /etc/localtime`**：宿主机时区同步到容器（镜像里也装了 `tzdata` 兜底）
-- **`SESSION_SECRET`**：必填，cookie 签名密钥，**生产一定要换成强随机串**
-- **`ADMIN_USER` / `ADMIN_PASS`**：首次启动 seed 进 settings 的初始账号密码；之后改密码用子命令（见下）
+要点(方式一/二通用):
+- **`-p 8080:8080`**:宿主机端口:容器端口,两边一致就行,要改一起改(还要带 `-e APP_PORT=同端口`)
+- **`-v "$(pwd)/data:/app/data"`**:SQLite 文件持久化,容器删了数据还在
+- **`-v /etc/localtime`**:宿主机时区同步到容器(镜像里也装了 `tzdata` 兜底)
+- **`SESSION_SECRET`**:必填,cookie 签名密钥,**生产一定要换成强随机串**
+- **`ADMIN_USER` / `ADMIN_PASS`**:首次启动 seed 进 settings 的初始账号密码;之后改密码用子命令(见下)
 
-### 方式二：`docker-compose`
+### 方式三:`docker-compose`
 
-项目根目录已经有 `docker-compose.yml`：
+项目根目录已经有 `docker-compose.yml`,默认从 Docker Hub 拉镜像(不想本地构建):
 
 ```yaml
 services:
   cert-live:
-    build: .
-    image: cert-live:latest
+    image: gongwen/cert-live:latest      # 直接拉公共镜像
+    # build: .                            # 想本地构建就注释掉 image,放开 build
     container_name: cert-live
     restart: unless-stopped
     ports:
-      - "9527:9527"
+      - "8080:8080"
     volumes:
       - ./data:/app/data
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
     environment:
-      - APP_PORT=9527
       - GIN_MODE=release
       - SESSION_SECRET=please-change-me-to-a-long-random-string
       - ADMIN_USER=admin
@@ -231,13 +272,13 @@ services:
       - TZ=Asia/Shanghai
 ```
 
-启动：
+启动:
 
 ```bash
-docker compose up -d --build       # 起容器（首次或代码改动后）
-docker compose logs -f             # 看日志
-docker compose restart             # 重启
-docker compose down                # 停止并删除容器（数据卷保留）
+docker compose up -d                # 拉镜像 + 起容器(首次或改完 compose 后)
+docker compose logs -f              # 看日志
+docker compose restart              # 重启
+docker compose down                 # 停止并删除容器(数据卷保留)
 ```
 
 ### 改账号 / 密码（容器内执行子命令）
