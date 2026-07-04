@@ -264,20 +264,26 @@ body {
 /* ===== 笔记本短屏（MacBook 默认缩放约 1440×900）：整体缩一档 ===== */
 @media (max-height: 900px) {
   .login-wrap {
-    max-width: clamp(400px, 30vw, 460px);
-    padding: 16px;
+    max-width: clamp(360px, 28vw, 420px);
+    padding: 12px;
   }
   .login-card {
-    padding: clamp(28px, 2.6vw, 38px) clamp(26px, 2.4vw, 36px) clamp(24px, 2.2vw, 32px);
+    padding: clamp(22px, 2vw, 30px) clamp(22px, 2vw, 30px) clamp(18px, 1.8vw, 26px);
     border-radius: 14px;
-    box-shadow: 0 0 40px rgba(30, 120, 240, 0.22);
+    box-shadow: 0 0 36px rgba(30, 120, 240, 0.22);
   }
-  .brand-logo { width: 72px; height: 72px; margin-bottom: 12px; }
-  .login-brand { margin-bottom: 24px; }
-  .login-brand h1 { font-size: clamp(20px, 1.5vw, 24px); }
-  .field input { height: clamp(40px, 3vw, 44px); }
-  .captcha-img { height: clamp(40px, 3vw, 44px); }
-  .login-btn { height: clamp(42px, 3.2vw, 46px); }
+  .brand-logo { width: 60px; height: 60px; margin-bottom: 8px; }
+  .login-brand { margin-bottom: 18px; }
+  .login-brand h1 { font-size: clamp(18px, 1.4vw, 22px); margin-bottom: 4px; }
+  .brand-sub { font-size: 11px; letter-spacing: 2px; }
+  .field { margin-bottom: 14px; }
+  .field label { font-size: 12px; margin-bottom: 6px; }
+  .field input { height: 40px; padding-left: 38px; font-size: 14px; }
+  .input-icon { left: 12px; font-size: 13px; }
+  .captcha-row { gap: 8px; }
+  .captcha-img { height: 40px; width: clamp(110px, 8vw, 140px); }
+  .login-tip { font-size: 12px; padding: 7px 10px; margin-bottom: 10px; }
+  .login-btn { height: 42px; font-size: 14px; margin-top: 4px; letter-spacing: 1.5px; }
 }
 
 /* ===== 移动端：表单覆盖全屏 ===== */

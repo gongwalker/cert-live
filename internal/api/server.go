@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"cert-live/internal/auth"
 	"cert-live/internal/config"
 	"cert-live/internal/scheduler"
 	"cert-live/internal/store"
@@ -18,16 +19,20 @@ type Server struct {
 	cfg       *config.Config
 	st        *store.Store
 	scheduler *scheduler.Scheduler
+	limiter   *auth.LoginLimiter
 	assets    embed.FS
 	http      *http.Server
 }
 
 func New(cfg *config.Config, st *store.Store, assets embed.FS) *Server {
+	ll := auth.NewLoginLimiter()
+	ll.StartCleanup()
 	return &Server{
 		cfg:       cfg,
 		st:        st,
 		assets:    assets,
 		scheduler: scheduler.New(st),
+		limiter:   ll,
 	}
 }
 

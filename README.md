@@ -1,8 +1,15 @@
 # CertLive ｜ 证活
 
+> **为什么叫「证活」?**
+> 一个「证」字,既是名词也是动词,藏着项目要解决的两件事:
+> - **证** _(名词 · 证书)_ —— 盯紧域名当前生效的那张 SSL **证书**,剩余天数不足自动告警,到期前不让你错过续期窗口。
+> - **证** _(动词 · 验证)_ —— 每轮探测顺带发一次 HTTP 请求,**证明** URL 是否仍可正常访问,状态码异常即时推送。
+>
+> 一个「活」字,既问证书「还有效」,也问站点「还活着」。**CertLive = Certificate + Live**,既是证书的存活,也是站点的存活。
+
 基于 Golang + Gin 的轻量化 SSL 证书 + HTTP 健康监控系统。核心差异化：**实时探测站点线上正在运行的证书，自动忽略已替换废弃的旧证书，杜绝无效过期告警；HTTP 状态码异常也能即时推送**。
 
-前端纯原生 HTML / CSS / JS（无 Vue / React），数据持久化用 SQLite 单文件，开箱即用，无外部依赖。
+前端纯原生 HTML / CSS / JS，数据持久化用 SQLite 单文件，开箱即用，无外部依赖。
 
 ## 核心特性
 
@@ -25,6 +32,19 @@
 - 列表顶部支持「多标签 AND 筛选」、「10 天内到期快捷过滤」
 - 拖拽排序
 
+### 登录安全（反暴力破解）
+
+单管理员后台也值得把门焊死。登录链路叠加了四道防线：
+
+- **图形验证码** — 4 位字符（已剔除 `0/O/1/I/L` 避免看错）,透明背景 PNG,大小写不敏感,**一次性**消费(校验后立即失效)
+- **IP 维度限流** — 同一 IP 在 10 分钟窗口内累计 5 次密码错误 → 锁 15 分钟,期间任何登录尝试直接返回 `429 + Retry-After`
+- **bcrypt 密码哈希** — `DefaultCost=10`,即便数据库泄漏也无法逆推明文
+- **HMAC 签名 cookie** — cookie 值为 `user.HMAC-SHA256(secret)`,服务端启动时注入随机 `SESSION_SECRET`,篡改即失效
+- **账号枚举防护** — 用户名不存在 / 密码错误统一返回「用户名或密码错误」
+- **失败 / 成功审计** — `log.Printf("login: fail/success ip=... user=...")` 写到 stdout,便于接日志聚合
+
+> ⚠️ 反向代理场景下 `c.ClientIP()` 默认信任 `X-Forwarded-For`。生产环境建议用 nginx 反代,并通过 `engine.SetTrustedProxies()` 限制信任的代理来源,否则攻击者可伪造该 header 绕过限流。
+
 ### 通知推送（重点）
 
 - **二选一渠道**：飞书机器人 或 企业微信机器人，UI 内可切换
@@ -37,7 +57,7 @@
   - 飞书：发送间隔 ≥ 600ms（满足 100/min、5/s）
   - 企业微信：发送间隔 ≥ 3s（满足 20/min）
   - 失败按 `1s → 2s → 4s` 退避重试 3 次
-- **扫描节奏**：固定每 5 分钟扫库一次，命中条件立即直推，不去重（每次扫到都推）
+- **扫描节奏**：每轮探测周期（默认 20 分钟,可调 1–60 分钟）都会扫库一次,命中条件立即直推,不去重（每次扫到都推）
 
 ### 数据持久化与备份
 
@@ -56,22 +76,29 @@
 
 ```
 cert-live/
-├── main.go                    # 入口
+├── main.go                    # 入口(CLI 子命令派发 + 服务启动)
 ├── internal/
 │   ├── api/                   # HTTP 路由、handlers、server
-│   ├── auth/                  # cookie 登录态、密码哈希
-│   ├── captcha/               # 登录图形验证码
-│   ├── config/                # .env 加载
-│   ├── model/                 # 数据结构（Domain / Tag / Settings）
-│   ├── notify/                # 飞书/企业微信 推送
-│   ├── probe/                 # TLS + HTTP 探测
-│   ├── scheduler/             # 定时巡检 + 5 分钟通知扫描
-│   └── store/                 # SQLite schema + CRUD
-├── static/                    # 前端静态资源（CSS / JS / 图标）
-├── templates/                 # HTML 模板
-├── data/                      # SQLite 数据库（运行时生成）
-├── scripts/                   # 启停脚本
-├── Makefile                   # build / run / start / stop
+│   │   ├── routes.go          # 路由树 + 中间件
+│   │   ├── handlers.go        # 全部业务 handler
+│   │   └── server.go          # Server struct + 生命周期
+│   ├── auth/
+│   │   ├── auth.go            # cookie 登录态、bcrypt、HMAC 签名
+│   │   └── limiter.go         # 按 IP 的登录失败限流(反暴力破解)
+│   ├── captcha/               # 图形验证码(透明 PNG、4 位、一次性)
+│   ├── config/                # .env / 环境变量加载
+│   ├── model/                 # 数据结构(Domain / Tag / Settings)
+│   ├── notify/                # 飞书 / 企业微信 推送(限速 + 退避重试)
+│   ├── probe/                 # TLS 握手 + HTTP 健康探测(各 10s 超时)
+│   ├── scheduler/             # 周期循环:并发探测 → 扫库 → 推送
+│   └── store/                 # SQLite schema + CRUD + 备份恢复
+├── static/                    # 前端静态资源(CSS / JS / 图标 / Font Awesome)
+├── templates/                 # HTML 模板(login.html / domains.html)
+├── data/                      # SQLite 数据库(运行时生成)
+├── scripts/                   # 启停脚本(start/stop/restart)
+├── Dockerfile                 # 多阶段构建(golang:1.25-alpine → alpine)
+├── docker-compose.yml         # 一键编排
+├── Makefile                   # build / run / start / stop / reset-admin
 ├── .env.example               # 环境变量样例
 └── README.md
 ```
@@ -103,6 +130,16 @@ make status      # 查看运行状态
 
 浏览器打开 `http://localhost:8080`，用 `.env` 里设置的管理员账密登录。
 
+### CLI 子命令
+
+```bash
+./cert-live                 # 等同于 serve(默认)
+./cert-live serve           # 启动 HTTP 服务
+./cert-live reset-admin     # 重置登录账号 / 密码(见下)
+./cert-live version         # 打印版本号
+./cert-live help            # 显示帮助
+```
+
 ### 修改账号 / 密码
 
 `.env` 里的 `ADMIN_USER` / `ADMIN_PASS` 只在首次启动时 seed 一次，之后改密码不生效。要改账号密码用专用子命令：
@@ -115,7 +152,7 @@ make status      # 查看运行状态
 ./cert-live reset-admin <新账号> <新密码>
 ```
 
-子命令直接读写 `data/certlive.db` 的 `settings` 表，不启动服务，跑完即退出。
+**复杂度校验**:账号 ≥ 5 字符、密码 ≥ 6 字符,只允许可打印 ASCII(拒绝汉字 / emoji)。子命令直接读写 `data/certlive.db` 的 `settings` 表(`login_user` / `login_password`),不启动服务,跑完即退出。
 
 ### 3. 配置通知推送
 
@@ -126,11 +163,11 @@ make status      # 查看运行状态
 3. 选格式（text / markdown）
 4. 编辑推送内容模板（用 `{$变量}` 占位）
 5. 至少启用一个触发条件：
-   - 条件 A：证书剩余天数小于 `N` 天
-   - 条件 B：HTTP 状态码不在白名单
+   - 条件 A：证书剩余天数小于 `N` 天（默认 30）
+   - 条件 B：HTTP 状态码不在白名单（默认 `200,201,204,301,302,304,307,308`）
 6. 保存
 
-5 分钟内调度器会扫库一次，命中条件的域名会自动推送。
+下一轮探测周期（默认 20 分钟,可在设置里改 `cycle_interval_min`）就会扫库一次,命中条件的域名自动推送。也可以在域名列表点「立即检查」按钮触发单条探测 + 即时推送。
 
 ## Docker 部署
 
@@ -257,14 +294,22 @@ docker compose start
 
 ## 调度节奏
 
-| 任务 | 间隔 | 触发条件 |
+后台只有一个调度循环(`scheduler.Scheduler.Run`),开机 30 秒后跑首次,之后按 `cycle_interval_min` 间隔循环。**每一轮都串行做两件事**:
+
+```
+开机 → 等 30s → [并发探测所有域名 → 扫库找命中 → 限速推送] → 等 cycle → 再来一轮 → ...
+```
+
+| 阶段 | 行为 | 关键参数 |
 |---|---|---|
-| 证书 + HTTP 探测 | `check_interval` 设置（默认 6 小时） | 开机后 5s 跑首次，之后按间隔 |
-| 通知推送扫描 | 固定 5 分钟 | 命中条件 A 或 B 且未推送过的域名 |
+| 探测 | 并发对每个域名做 TLS 握手 + HTTP GET,结果写回 `domains` 表 | 并发上限 10,单域名超时 10s |
+| 推送 | 扫库读已探测的结果,命中条件 A/B 立即推送(不去重) | 平台限速:飞书 600ms/条、企微 3s/条 |
 
-通知扫描基于已探测的结果（`days_remaining` / `http_status`）判断，**不会**触发新的 TLS 握手，所以 5 分钟一轮的开销极低。
+**周期配置**:UI 里的 `cycle_interval_min` 控制,默认 **20 分钟**,可调范围 **1–60 分钟**。每次循环开始时从 DB 读,改完设置下一轮就生效。
 
-> ⚠️ 不去重：只要域名持续命中条件，每次扫描都会推一次。比如某域名剩 8 天、阈值 30 天，那它会每 5 分钟推一次直到你处理。如果嫌烦可以把阈值调小或暂时关条件 A。
+> 💡 推送用的是刚刚那几秒探测到的最新数据(同事务串行),所以不会出现「证书都换了还在用老结果告警」的偏差。
+>
+> ⚠️ **不去重**:只要域名持续命中条件,每一轮都会推一次。比如某域名剩 8 天、阈值 30 天,那它会每 20 分钟推一次直到你处理。如果嫌烦可以把阈值调小、暂时关条件 A、或把该域名删除。
 
 ## 配置项一览
 
@@ -281,43 +326,76 @@ docker compose start
 
 通知设置（存在 `settings` 表，UI 配置，全部以 `notify_` 前缀）：
 
-| Key | 类型 | 说明 |
+| Key | 类型 / 默认 | 说明 |
 |---|---|---|
-| `notify_channel` | `feishu` / `wecom` | 当前激活平台 |
-| `notify_feishu_webhook` | string | 飞书机器人地址 |
-| `notify_feishu_format` | `text` / `markdown` | 飞书推送格式 |
+| `notify_channel` | `feishu` / `wecom` (默认 `feishu`) | 当前激活平台 |
+| `notify_feishu_webhook` | string (默认空) | 飞书机器人地址 |
+| `notify_feishu_format` | `text` / `markdown` (默认 `markdown`) | 飞书推送格式 |
 | `notify_feishu_text` | string | 飞书推送模板 |
-| `notify_wecom_webhook` | string | 企业微信机器人地址 |
-| `notify_wecom_format` | `text` / `markdown` | 企业微信推送格式 |
+| `notify_wecom_webhook` | string (默认空) | 企业微信机器人地址 |
+| `notify_wecom_format` | `text` / `markdown` (默认 `text`) | 企业微信推送格式 |
 | `notify_wecom_text` | string | 企业微信推送模板 |
-| `notify_cond_a_enabled` | bool | 条件 A 开关 |
-| `notify_cond_a_days` | int | 条件 A：剩余天数阈值 |
-| `notify_cond_b_enabled` | bool | 条件 B 开关 |
-| `notify_cond_b_codes` | string | 条件 B：HTTP 状态码白名单 |
-| `check_interval` | int（分钟） | 证书探测周期 |
+| `notify_cond_a_enabled` | bool (默认 `true`) | 条件 A 开关 |
+| `notify_cond_a_days` | int (默认 `30`) | 条件 A：剩余天数阈值 |
+| `notify_cond_b_enabled` | bool (默认 `false`) | 条件 B 开关 |
+| `notify_cond_b_codes` | string (默认 `200,201,204,301,302,304,307,308`) | 条件 B：HTTP 状态码白名单 |
+| `cycle_interval_min` | int (默认 `20`,范围 1–60) | 探测 + 推送的循环周期(分钟) |
 
-## API 一览（需登录 cookie）
+> 🔒 登录相关 key 也存在 `settings` 表,但不在 UI 暴露(由 CLI 子命令管理):
+> - `login_user` — 管理员用户名
+> - `login_password` — bcrypt 哈希(cost=10)
+
+## API 一览
+
+所有 JSON 响应统一信封:`{ code, message, data }`。成功 `code=200`,失败 `code=HTTP 状态码`(401/403/404/429/500),`data=null`。
+
+**公开接口**(无需登录):
+
+| Method | Path | 说明 |
+|---|---|---|
+| `GET/POST` | `/login` | 登录页 / 提交登录(失败累计触发限流) |
+| `GET` | `/logout` | 清 cookie 重定向到 `/login` |
+| `GET` | `/api/captcha` | 生成图形验证码,返回 `{id, img}` |
+
+**受保护接口**(需 cookie,401 重定向到 `/login`):
 
 | Method | Path | 说明 |
 |---|---|---|
 | `GET` | `/api/me` | 当前登录用户 |
-| `GET/POST` | `/api/domains` | 列表 / 新增域名 |
+| `GET/POST` | `/api/domains` | 列表(支持 `?search=&tag_ids=`) / 新增 |
 | `PUT/DELETE` | `/api/domains/:id` | 编辑 / 删除 |
 | `POST` | `/api/domains/:id/check` | 立即探测单个域名 |
 | `POST` | `/api/domains/check-all` | 触发全量探测 |
 | `PUT` | `/api/domains/reorder` | 拖拽排序保存 |
 | `GET/POST` | `/api/tags` | 标签列表 / 新增 |
-| `PUT/DELETE` | `/api/tags/:id` | 编辑 / 删除 |
+| `PUT/DELETE` | `/api/tags/:id` | 编辑(可改 name/icon/color) / 删除 |
 | `PUT` | `/api/tags/reorder` | 标签排序 |
 | `GET/PUT` | `/api/settings` | 读取 / 保存通知设置 |
-| `GET` | `/api/backup` | 下载数据库快照 |
-| `POST` | `/api/restore` | 上传备份恢复 |
+| `GET` | `/api/backup` | 下载数据库快照(`VACUUM INTO`) |
+| `POST` | `/api/restore` | 上传 `.db` 备份恢复 |
 
 ## 数据模型
 
-- `domains` — 域名 + 最近一次证书/HTTP 探测结果
-- `tags` / `domain_tags` — 标签 + 多对多关联
-- `settings` — KV 配置（`key` TEXT PK, `value` TEXT）。除了通知配置，**登录账号也存这里**：`login_user` = 用户名、`login_password` = bcrypt 哈希
+SQLite 单文件,启用 `foreign_keys=ON`、`busy_timeout=5000ms`,Go 侧 `MaxOpenConns=1`(避免写锁竞争)。四张表:
+
+### `domains` — 域名 + 最近一次探测结果
+- 用户字段:`id` / `host` / `port`(默认 443) / `path`(默认 `/`) / `notes` / `sort_order` / `created_at`
+- 证书探测:`subject` / `issuer` / `issuer_org` / `sans` / `serial_number` / `not_before` / `not_after` / `is_wildcard` / `days_remaining` / `last_checked` / `last_error`
+- HTTP 探测:`http_status` / `http_error` / `http_checked`
+- 索引:`host` / `not_after` / `sort_order`
+
+### `tags` — 标签定义
+- `id` / `name`(UNIQUE) / `icon`(Font Awesome 类名) / `color`(hex) / `sort_order` / `created_at`
+
+### `domain_tags` — 多对多关联
+- `(domain_id, tag_id)` 复合主键,两端都 `ON DELETE CASCADE`
+- 多标签 AND 筛选用 `GROUP BY ... HAVING COUNT(DISTINCT tag_id) = N` 实现
+
+### `settings` — KV 配置
+- `key` TEXT PK / `value` TEXT
+- 通知相关:`notify_*` 前缀(见上表)
+- 登录相关:`login_user` = 用户名、`login_password` = bcrypt 哈希
+- 周期:`cycle_interval_min`
 
 ## License
 

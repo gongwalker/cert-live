@@ -3,6 +3,7 @@ package api
 import (
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -57,8 +58,22 @@ func (s *Server) Captcha(c *gin.Context) {
 	ok(c, gin.H{"id": id, "img": b64})
 }
 
-// LoginSubmit 处理登录表单提交：校验验证码 → 校验账号密码 → 下发 cookie
+// LoginSubmit 处理登录表单提交：限流 → 验证码 → 账号密码 → 下发 cookie
 func (s *Server) LoginSubmit(c *gin.Context) {
+	ip := c.ClientIP()
+
+	// 1. 按 IP 限流:锁定期间直接 429
+	if allowed, retry := s.limiter.Allow(ip); !allowed {
+		mins := int(retry.Minutes())
+		if mins < 1 {
+			mins = 1
+		}
+		c.Header("Retry-After", strconv.Itoa(int(retry.Seconds())))
+		fail(c, http.StatusTooManyRequests, fmt.Sprintf("登录失败次数过多,请 %d 分钟后再试", mins))
+		return
+	}
+
+	// 2. 验证码校验(失败不计入限流,避免误锁)
 	captchaID := c.PostForm("captchaId")
 	captchaCode := c.PostForm("captcha")
 	if !captcha.Verify(captchaID, captchaCode) {
@@ -66,6 +81,7 @@ func (s *Server) LoginSubmit(c *gin.Context) {
 		return
 	}
 
+	// 3. 账号密码校验
 	user := c.PostForm("username")
 	pass := c.PostForm("password")
 	storedUser, storedHash, err := s.st.GetLoginCredentials()
@@ -76,9 +92,15 @@ func (s *Server) LoginSubmit(c *gin.Context) {
 	// 用户名不存在 / 哈希为空 / 密码不匹配，统一报「用户名或密码错误」避免账号枚举
 	if storedUser == "" || storedHash == "" || user != storedUser ||
 		auth.CheckPassword(storedHash, pass) != nil {
+		s.limiter.RecordFailure(ip)
+		log.Printf("login: fail ip=%s user=%q", ip, user)
 		fail(c, http.StatusUnauthorized, "用户名或密码错误")
 		return
 	}
+
+	// 4. 成功:清失败计数 + 审计 + 下发 cookie
+	s.limiter.RecordSuccess(ip)
+	log.Printf("login: success ip=%s user=%s", ip, storedUser)
 	auth.SetLogin(c, storedUser)
 	ok(c, gin.H{"username": storedUser})
 }
