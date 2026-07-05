@@ -58,12 +58,24 @@
   - 企业微信：发送间隔 ≥ 3s（满足 20/min）
   - 失败按 `1s → 2s → 4s` 退避重试 3 次
 - **扫描节奏**：每轮探测周期（默认 20 分钟,可调 1–60 分钟）都会扫库一次,命中条件立即直推,不去重（每次扫到都推）
+- **工具栏实时显示推送条件**：域名列表页顶部以 chip 形式展示当前生效的规则（如 `证书 ≤ 30 天 OR HTTP 不在 {200,201,204}`),任一域名命中阈值时对应 chip 红色脉冲高亮,一眼看出哪些数据正在触发推送。点击 chip 直接跳到通知设置
 
 ### 数据持久化与备份
 
 - SQLite 单文件，无外部数据库依赖
 - 一键导出 `.db` 备份（基于 `VACUUM INTO` 的一致快照）
 - 一键上传备份恢复
+
+### 公开 H5 浏览页（免登录查看）
+
+需要把证书状态分享给团队 / 客户又不想给他们开账号?用公开 H5 页面:
+
+- **设置 → 通用**里填一个随机串(如 `team1-abc`)作为 token,保存后访问 `/view/<token>` 即可免登录浏览
+- 留空 = 关闭公开访问;改 token 即时生效,不需要重启
+- token 不匹配 → 返回标准 `404 page not found`(跟 gin 默认 404 一致,防枚举)
+- 移动端卡片式布局,显示**域名 / 证书 / 有效期 / HTTP / 检测时间 / 标签 / 说明** 7 个字段
+- **deep link**:通知模板里写 `{$viewurl}`,发送时自动替换为 `/view/<token>?id=<share_id>`,收件人点开直接定位到出问题的那张域名卡片(排到第一 + 蓝色边框高亮 + 「当前关注」徽章)
+- ⚠️ URL 一旦泄漏任何人都能看,token 务必用强随机串(如 `openssl rand -hex 8`),不用时及时清空
 
 ### 部署
 
@@ -93,7 +105,7 @@ cert-live/
 │   ├── scheduler/             # 周期循环:并发探测 → 扫库 → 推送
 │   └── store/                 # SQLite schema + CRUD + 备份恢复
 ├── static/                    # 前端静态资源(CSS / JS / 图标 / Font Awesome)
-├── templates/                 # HTML 模板(login.html / domains.html)
+├── templates/                 # HTML 模板(login.html / domains.html / h5.html)
 ├── data/                      # SQLite 数据库(运行时生成)
 ├── scripts/                   # 启停脚本(start/stop/restart)
 ├── Dockerfile                 # 多阶段构建(golang:1.25-alpine → alpine)
@@ -350,6 +362,8 @@ docker compose start
 | `{$time}` | 当前时间 |
 | `{$tags}` | 所有标签，空格分隔 |
 | `{$notes}` | 说明 |
+| `{$viewurl}` | 详情查看 URL（`/view/<token>?id=<share_id>`，公开访问未开启则为空；收件人点开直达该域名卡片） |
+| `{$notify_rule}` | 当前推送条件（如 `证书 ≤ 30 天 OR HTTP 不在 {200,201,204}`，跟列表页 chip 一致） |
 
 ## 调度节奏
 
@@ -399,6 +413,7 @@ docker compose start
 | `notify_cond_b_enabled` | bool (默认 `false`) | 条件 B 开关 |
 | `notify_cond_b_codes` | string (默认 `200,201,204,301,302,304,307,308`) | 条件 B：HTTP 状态码白名单 |
 | `cycle_interval_min` | int (默认 `20`,范围 1–60) | 探测 + 推送的循环周期(分钟) |
+| `public_path` | string (默认空 = 关闭) | 公开 H5 访问的 token;非空时 `/view/<token>` 免登录查看域名证书状态 |
 
 > 🔒 登录相关 key 也存在 `settings` 表,但不在 UI 暴露(由 CLI 子命令管理):
 > - `login_user` — 管理员用户名
@@ -415,6 +430,7 @@ docker compose start
 | `GET/POST` | `/login` | 登录页 / 提交登录(失败累计触发限流) |
 | `GET` | `/logout` | 清 cookie 重定向到 `/login` |
 | `GET` | `/api/captcha` | 生成图形验证码,返回 `{id, img}` |
+| `GET` | `/view/:token` | 公开 H5 浏览页(token 在通用设置里配,不匹配返回 404) |
 
 **受保护接口**(需 cookie,401 重定向到 `/login`):
 
@@ -438,10 +454,10 @@ docker compose start
 SQLite 单文件,启用 `foreign_keys=ON`、`busy_timeout=5000ms`,Go 侧 `MaxOpenConns=1`(避免写锁竞争)。四张表:
 
 ### `domains` — 域名 + 最近一次探测结果
-- 用户字段:`id` / `host` / `port`(默认 443) / `path`(默认 `/`) / `notes` / `sort_order` / `created_at`
+- 用户字段:`id` / `host` / `port`(默认 443) / `path`(默认 `/`) / `notes` / `sort_order` / `created_at` / `share_id`(对外分享用的 16 字符 hex,CreateDomain 时随机生成)
 - 证书探测:`subject` / `issuer` / `issuer_org` / `sans` / `serial_number` / `not_before` / `not_after` / `is_wildcard` / `days_remaining` / `last_checked` / `last_error`
 - HTTP 探测:`http_status` / `http_error` / `http_checked`
-- 索引:`host` / `not_after` / `sort_order`
+- 索引:`host` / `not_after` / `sort_order` / `share_id`(partial UNIQUE,仅非 NULL 值约束)
 
 ### `tags` — 标签定义
 - `id` / `name`(UNIQUE) / `icon`(Font Awesome 类名) / `color`(hex) / `sort_order` / `created_at`

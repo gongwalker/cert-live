@@ -12,6 +12,13 @@ func (s *Server) routes() http.Handler {
 	r := gin.New()
 	r.Use(gin.Logger(), gin.Recovery())
 
+	// 全局加 X-Robots-Tag:告诉搜索引擎所有页面都不要收录、不要跟随链接、不要缓存
+	// 比单页 <meta name="robots"> 更权威,所有响应(HTML / API / 静态资源)都带上
+	r.Use(func(c *gin.Context) {
+		c.Header("X-Robots-Tag", "noindex, nofollow, noarchive, nosnippet")
+		c.Next()
+	})
+
 	// 模板 + 静态资源都从 embed.FS 读取（编译时已烤进二进制）
 	r.SetHTMLTemplate(s.loadTemplates())
 	r.StaticFS("/static", http.FS(s.staticFS()))
