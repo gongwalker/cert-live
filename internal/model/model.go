@@ -17,6 +17,10 @@ type Domain struct {
 	Notes     string `json:"notes,omitempty"`
 	CreatedAt int64  `json:"created_at"`
 
+	// 对外分享用的唯一 ID（CreateDomain 时随机生成），用于构造 /view/<token>?id=<share_id> 这种 deep link
+	// 跟数据库主键 id 解耦，避免暴露自增 id 暴露域名数量；老域名可能为空
+	ShareID string `json:"share_id,omitempty"`
+
 	// 最近一次证书探测结果（零值表示尚未探测）
 	Subject       string   `json:"subject,omitempty"`
 	Issuer        string   `json:"issuer,omitempty"`      // 中间证书 CN

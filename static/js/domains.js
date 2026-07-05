@@ -1515,7 +1515,7 @@
 
   // ? 号变量提示：点开关，点外部 / ESC 关闭
   // 浮层挂到 body 上，避免被 .dlg 的 overflow:hidden 裁掉
-  var VAR_ROWS = [
+var VAR_ROWS = [
     ['{$host}', '主机名'],
     ['{$url}', '完整 URL（含端口+路径）'],
     ['{$days}', '剩余天数'],
@@ -1525,7 +1525,8 @@
     ['{$expire_date}', '到期日期 YYYY-MM-DD HH:MM:SS'],
     ['{$time}', '当前时间'],
     ['{$tags}', '所有标签，空格分隔'],
-    ['{$notes}', '说明']
+    ['{$notes}', '说明'],
+    ['{$viewurl}', '详情查看 URL（点开定位到该域名，需配置公开访问路径）']
   ];
   var $varTipTrigger = document.getElementById('varTipTrigger');
   var $varHelp = null;

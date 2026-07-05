@@ -23,6 +23,8 @@ CREATE TABLE IF NOT EXISTS domains (
   notes TEXT,
   created_at INTEGER NOT NULL,
   sort_order INTEGER NOT NULL DEFAULT 0,
+  -- 对外分享用的唯一 ID（CreateDomain 时生成），用于 /view/<token>?id=<share_id> deep link
+  share_id TEXT,
   -- 证书探测结果（首次成功探测后填充；NULL 表示尚未探测）
   subject TEXT,
   issuer TEXT,
@@ -67,7 +69,7 @@ CREATE INDEX IF NOT EXISTS idx_domain_tags_tag ON domain_tags(tag_id);
 `
 
 const domainListQuery = `
-SELECT id, host, port, COALESCE(path,'/'), notes, created_at,
+SELECT id, host, port, COALESCE(path,'/'), notes, created_at, COALESCE(share_id,''),
        subject, issuer, issuer_org, sans, serial_number,
        not_before, not_after, is_wildcard, days_remaining,
        last_checked, last_error,
@@ -79,7 +81,7 @@ const domainListOrderBy = `
 ORDER BY sort_order ASC, id DESC`
 
 const domainGetQuery = `
-SELECT id, host, port, COALESCE(path,'/'), notes, created_at,
+SELECT id, host, port, COALESCE(path,'/'), notes, created_at, COALESCE(share_id,''),
        subject, issuer, issuer_org, sans, serial_number,
        not_before, not_after, is_wildcard, days_remaining,
        last_checked, last_error,
@@ -94,6 +96,7 @@ type scanner interface {
 func scanDomain(row scanner) (model.Domain, error) {
 	var d model.Domain
 	var notes sql.NullString
+	var shareID sql.NullString
 	var subject, issuer, issuerOrg, serial, lastErr sql.NullString
 	var httpErr sql.NullString
 	var sansJSON []byte
@@ -102,7 +105,7 @@ func scanDomain(row scanner) (model.Domain, error) {
 	var isWildcard sql.NullInt64
 
 	if err := row.Scan(
-		&d.ID, &d.Host, &d.Port, &d.Path, &notes, &d.CreatedAt,
+		&d.ID, &d.Host, &d.Port, &d.Path, &notes, &d.CreatedAt, &shareID,
 		&subject, &issuer, &issuerOrg, &sansJSON, &serial,
 		&notBefore, &notAfter, &isWildcard, &daysRemaining,
 		&lastChecked, &lastErr,
@@ -110,6 +113,7 @@ func scanDomain(row scanner) (model.Domain, error) {
 	); err != nil {
 		return d, err
 	}
+	d.ShareID = shareID.String
 	d.Notes = notes.String
 	d.Subject = subject.String
 	d.Issuer = issuer.String

@@ -96,7 +96,7 @@ func (s *Scheduler) maybePushOne(d model.Domain) {
 	if !evalConds(d, settings, parseHTTPWhitelist(settings.NotifyCondBCodes)) {
 		return
 	}
-	rendered := notify.Render(tmpl, buildVars(d))
+	rendered := notify.Render(tmpl, buildVars(d, settings.PublicPath))
 	if err := ch.Send(rendered); err != nil {
 		log.Printf("notify: send %s: %v", d.Host, err)
 	}
@@ -191,7 +191,7 @@ func (s *Scheduler) scanAndPush() {
 		if !evalConds(d, settings, httpWhitelist) {
 			continue
 		}
-		rendered := notify.Render(tmpl, buildVars(d))
+		rendered := notify.Render(tmpl, buildVars(d, settings.PublicPath))
 		if err := ch.Send(rendered); err != nil {
 			log.Printf("notify: send %s: %v", d.Host, err)
 		}
@@ -253,7 +253,9 @@ func parseHTTPWhitelist(s string) map[int]bool {
 }
 
 // buildVars 把 model.Domain 拼成 notify.Vars，用于模板渲染。
-func buildVars(d model.Domain) notify.Vars {
+// publicPath 是公开访问 token（来自 settings.public_path），
+// 非空时构造 {$viewurl} = /view/<token>?id=<share_id>，让通知收件人点开直达该域名详情页。
+func buildVars(d model.Domain, publicPath string) notify.Vars {
 	httpStr := ""
 	if d.HTTPChecked != 0 && d.HTTPError == "" && d.HTTPStatus != 0 {
 		httpStr = strconv.Itoa(d.HTTPStatus)
@@ -279,6 +281,10 @@ func buildVars(d model.Domain) notify.Vars {
 	if d.NotAfter != 0 {
 		expireDate = time.Unix(d.NotAfter, 0).Format("2006-01-02 15:04:05")
 	}
+	viewURL := ""
+	if publicPath != "" && d.ShareID != "" {
+		viewURL = "/view/" + publicPath + "?id=" + d.ShareID
+	}
 	return notify.Vars{
 		Host:       d.Host,
 		URL:        url,
@@ -290,6 +296,7 @@ func buildVars(d model.Domain) notify.Vars {
 		Issuer:     strings.TrimSpace(d.IssuerOrg + " " + d.Issuer),
 		ExpireDate: expireDate,
 		Time:       time.Now().Format("2006-01-02 15:04:05"),
+		ViewURL:    viewURL,
 	}
 }
 

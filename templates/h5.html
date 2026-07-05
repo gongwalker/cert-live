@@ -63,6 +63,25 @@
       padding: 12px 14px;
       margin-bottom: 10px;
     }
+    .card.focused {
+      border: 1px solid var(--accent);
+      background: rgba(64, 158, 255, 0.12);
+      box-shadow: 0 0 0 3px rgba(64, 158, 255, 0.2);
+      position: relative;
+    }
+    .card.focused::before {
+      content: '当前关注';
+      position: absolute;
+      top: -8px;
+      right: 10px;
+      padding: 1px 7px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 10px;
+      border-radius: 4px;
+      line-height: 1.6;
+      letter-spacing: .5px;
+    }
     .host {
       font-size: 15px;
       font-weight: 600;
@@ -179,7 +198,7 @@
   </div>
   {{else}}
     {{range .items}}
-    <div class="card">
+    <div class="card{{if .focused}} focused{{end}}">
       <div class="host">{{.host}}</div>
 
       <div class="row">

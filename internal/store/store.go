@@ -1,13 +1,16 @@
 package store
 
 import (
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	_ "modernc.org/sqlite"
 
@@ -45,10 +48,44 @@ func (s *Store) Close() error { return s.db.Close() }
 //   - 已存在的表/索引：IF NOT EXISTS 跳过
 //   - 不存在的新建
 //   - 废弃的表（schema 末尾的 DROP 语句）直接 drop
-// 不做任何 ALTER 迁移 —— 字段调整请改 schema 后删 data/certlive.db 重来。
+//
+// 例外：share_id 是后加的字段（v1.x 升级到带 deep link 版本），老库 CREATE TABLE
+// IF NOT EXISTS 不会补字段，这里 PRAGMA 检查后用一次性 ALTER 兜底。
+// share_id 唯一索引也是这时候补上（partial index，允许多个 NULL）。
 func (s *Store) EnsureSchema() error {
-	_, err := s.db.Exec(schema)
-	return err
+	if _, err := s.db.Exec(schema); err != nil {
+		return err
+	}
+	// 老库兼容：share_id 字段不存在则补上
+	rows, err := s.db.Query(`PRAGMA table_info(domains)`)
+	if err != nil {
+		return err
+	}
+	hasShareID := false
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull, pk int
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			rows.Close()
+			return err
+		}
+		if name == "share_id" {
+			hasShareID = true
+		}
+	}
+	rows.Close()
+	if !hasShareID {
+		if _, err := s.db.Exec(`ALTER TABLE domains ADD COLUMN share_id TEXT`); err != nil {
+			return err
+		}
+	}
+	// share_id 唯一索引：partial index，只对非 NULL 值约束唯一
+	if _, err := s.db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_domains_share_id ON domains(share_id) WHERE share_id IS NOT NULL`); err != nil {
+		return err
+	}
+	return nil
 }
 
 // EnsureLogin 首次启动 seed：settings 表里没有 login_user 时写入账号 + bcrypt 哈希。
@@ -172,9 +209,10 @@ func (s *Store) GetDomain(id int64) (*model.Domain, error) {
 
 func (s *Store) CreateDomain(host string, port int, path, notes string, tagIDs []int64) (model.Domain, error) {
 	// 新域名默认排到第一位（MIN(sort_order) - 1，可能为负数）
-	res, err := s.db.Exec(`INSERT INTO domains(host, port, path, notes, created_at, sort_order)
-		VALUES(?,?,?,?,?, COALESCE((SELECT MIN(sort_order) FROM domains), 1) - 1)`,
-		host, port, normalizePath(path), nullableString(notes), nowUnix())
+	shareID := newShareID()
+	res, err := s.db.Exec(`INSERT INTO domains(host, port, path, notes, created_at, sort_order, share_id)
+		VALUES(?,?,?,?,?, COALESCE((SELECT MIN(sort_order) FROM domains), 1) - 1, ?)`,
+		host, port, normalizePath(path), nullableString(notes), nowUnix(), shareID)
 	if err != nil {
 		return model.Domain{}, err
 	}
@@ -182,7 +220,19 @@ func (s *Store) CreateDomain(host string, port int, path, notes string, tagIDs [
 	if err := s.SetDomainTags(id, tagIDs); err != nil {
 		return model.Domain{}, err
 	}
-	return model.Domain{ID: id, Host: host, Port: port, Path: path, Notes: notes, CreatedAt: nowUnix()}, nil
+	return model.Domain{ID: id, Host: host, Port: port, Path: path, Notes: notes, CreatedAt: nowUnix(), ShareID: shareID}, nil
+}
+
+// newShareID 生成 16 字符 hex 随机串（8 字节熵）。
+// 用于 /view/<token>?id=<share_id> 这种 deep link，避免暴露自增 id。
+// 8 字节 = 2^64 熵，对于几千个域名来说碰撞概率 = 0。
+func newShareID() string {
+	b := make([]byte, 8)
+	if _, err := rand.Read(b); err != nil {
+		// crypto/rand 失败几乎不可能发生；退化到时间戳避免卡死
+		return fmt.Sprintf("%x", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(b)
 }
 
 func normalizePath(p string) string {

@@ -47,6 +47,7 @@ type Vars struct {
 	Issuer     string
 	ExpireDate string
 	Time       string
+	ViewURL    string // 详情查看 URL，形如 /view/<token>?id=<share_id>；公开访问未开启时为空
 }
 
 var (
@@ -72,6 +73,7 @@ func Render(tmpl string, v Vars) string {
 		"{$issuer}":      v.Issuer,
 		"{$expire_date}": v.ExpireDate,
 		"{$time}":        v.Time,
+		"{$viewurl}":     v.ViewURL,
 	}
 	out := tmpl
 	for k, val := range repl {

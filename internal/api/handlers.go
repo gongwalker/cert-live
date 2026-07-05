@@ -63,6 +63,8 @@ func (s *Server) PublicView(c *gin.Context) {
 		c.String(http.StatusInternalServerError, "500 internal server error")
 		return
 	}
+	// ?id= 是 deep link 参数（来自通知里的 {$viewurl}），匹配的域名卡片会排到第一个并高亮
+	focusID := strings.TrimSpace(c.Query("id"))
 	// 字段预处理：把时间戳/端口号/签发 CA 在后端 format 好，模板只做展示
 	items := make([]gin.H, 0, len(domains))
 	for _, d := range domains {
@@ -79,6 +81,8 @@ func (s *Server) PublicView(c *gin.Context) {
 			"tags":         d.Tags,
 			"notes":        d.Notes,
 			"checked":      "",
+			"share_id":     d.ShareID,
+			"focused":      focusID != "" && d.ShareID == focusID,
 		}
 		if d.NotAfter != 0 {
 			item["not_after"] = time.Unix(d.NotAfter, 0).Format("2006-01-02 15:04")
@@ -96,9 +100,21 @@ func (s *Server) PublicView(c *gin.Context) {
 		}
 		items = append(items, item)
 	}
+	// 有 focus 时把匹配的卡片排到第一个（其他正常显示，不隐藏）
+	if focusID != "" {
+		for i, it := range items {
+			if f, ok := it["focused"].(bool); ok && f {
+				if i > 0 {
+					items[0], items[i] = items[i], items[0]
+				}
+				break
+			}
+		}
+	}
 	c.HTML(http.StatusOK, "h5.html", gin.H{
 		"items": items,
 		"total": len(items),
+		"focus": focusID,
 	})
 }
 
