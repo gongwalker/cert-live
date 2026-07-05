@@ -96,7 +96,7 @@ func (s *Scheduler) maybePushOne(d model.Domain) {
 	if !evalConds(d, settings, parseHTTPWhitelist(settings.NotifyCondBCodes)) {
 		return
 	}
-	rendered := notify.Render(tmpl, buildVars(d, settings.PublicPath))
+	rendered := notify.Render(tmpl, buildVars(d, settings))
 	if err := ch.Send(rendered); err != nil {
 		log.Printf("notify: send %s: %v", d.Host, err)
 	}
@@ -191,7 +191,7 @@ func (s *Scheduler) scanAndPush() {
 		if !evalConds(d, settings, httpWhitelist) {
 			continue
 		}
-		rendered := notify.Render(tmpl, buildVars(d, settings.PublicPath))
+		rendered := notify.Render(tmpl, buildVars(d, settings))
 		if err := ch.Send(rendered); err != nil {
 			log.Printf("notify: send %s: %v", d.Host, err)
 		}
@@ -253,9 +253,9 @@ func parseHTTPWhitelist(s string) map[int]bool {
 }
 
 // buildVars 把 model.Domain 拼成 notify.Vars，用于模板渲染。
-// publicPath 是公开访问 token（来自 settings.public_path），
-// 非空时构造 {$viewurl} = /view/<token>?id=<share_id>，让通知收件人点开直达该域名详情页。
-func buildVars(d model.Domain, publicPath string) notify.Vars {
+// settings.PublicPath 非空时构造 {$viewurl} = /view/<token>?id=<share_id>，让通知收件人点开直达该域名详情页。
+// {$notify_rule} 跟列表页 chip 渲染规则一致：证书 ≤ N 天 / HTTP 不在 {codes} / 两者用 OR 连接。
+func buildVars(d model.Domain, settings model.Settings) notify.Vars {
 	httpStr := ""
 	if d.HTTPChecked != 0 && d.HTTPError == "" && d.HTTPStatus != 0 {
 		httpStr = strconv.Itoa(d.HTTPStatus)
@@ -282,8 +282,8 @@ func buildVars(d model.Domain, publicPath string) notify.Vars {
 		expireDate = time.Unix(d.NotAfter, 0).Format("2006-01-02 15:04:05")
 	}
 	viewURL := ""
-	if publicPath != "" && d.ShareID != "" {
-		viewURL = "/view/" + publicPath + "?id=" + d.ShareID
+	if settings.PublicPath != "" && d.ShareID != "" {
+		viewURL = "/view/" + settings.PublicPath + "?id=" + d.ShareID
 	}
 	return notify.Vars{
 		Host:       d.Host,
@@ -297,7 +297,29 @@ func buildVars(d model.Domain, publicPath string) notify.Vars {
 		ExpireDate: expireDate,
 		Time:       time.Now().Format("2006-01-02 15:04:05"),
 		ViewURL:    viewURL,
+		NotifyRule: renderNotifyRule(settings),
 	}
+}
+
+// renderNotifyRule 把 settings 里的推送条件渲染成人类可读字符串，
+// 跟前端 domains.js renderNotifyConds 的 chip 文字保持一致：
+//   - 仅启用 A：证书 ≤ 30 天
+//   - 仅启用 B：HTTP 不在 {200,201,204}
+//   - 都启用：   证书 ≤ 30 天 OR HTTP 不在 {200,201,204}
+//   - 都没启用：（空串，调用方一般也不会触发推送）
+func renderNotifyRule(s model.Settings) string {
+	var parts []string
+	if s.NotifyCondAEnabled {
+		parts = append(parts, fmt.Sprintf("证书 ≤ %d 天", s.NotifyCondADays))
+	}
+	if s.NotifyCondBEnabled {
+		codes := strings.TrimSpace(s.NotifyCondBCodes)
+		if codes == "" {
+			codes = "200,201,204,301,302,304,307,308"
+		}
+		parts = append(parts, "HTTP 不在 {"+codes+"}")
+	}
+	return strings.Join(parts, " OR ")
 }
 
 // readSettings 从 settings 表读出 Settings（缺字段用默认值补齐）。

@@ -48,6 +48,7 @@ type Vars struct {
 	ExpireDate string
 	Time       string
 	ViewURL    string // 详情查看 URL，形如 /view/<token>?id=<share_id>；公开访问未开启时为空
+	NotifyRule string // 当前推送条件的人类可读描述，跟列表页 chip 一致（如"证书 ≤ 30 天 OR HTTP 不在 {200,201,204}"）
 }
 
 var (
@@ -74,6 +75,7 @@ func Render(tmpl string, v Vars) string {
 		"{$expire_date}": v.ExpireDate,
 		"{$time}":        v.Time,
 		"{$viewurl}":     v.ViewURL,
+		"{$notify_rule}": v.NotifyRule,
 	}
 	out := tmpl
 	for k, val := range repl {

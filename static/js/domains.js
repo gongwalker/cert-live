@@ -1526,7 +1526,8 @@ var VAR_ROWS = [
     ['{$time}', '当前时间'],
     ['{$tags}', '所有标签，空格分隔'],
     ['{$notes}', '说明'],
-    ['{$viewurl}', '详情查看 URL（点开定位到该域名，需配置公开访问路径）']
+    ['{$viewurl}', '详情查看 URL（点开定位到该域名，需配置公开访问路径）'],
+    ['{$notify_rule}', '当前推送条件（如：证书 ≤ 30 天 OR HTTP 不在 {200,201,204}）']
   ];
   var $varTipTrigger = document.getElementById('varTipTrigger');
   var $varHelp = null;
