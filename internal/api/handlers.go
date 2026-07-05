@@ -46,6 +46,62 @@ func (s *Server) DomainsPage(c *gin.Context) {
 	})
 }
 
+// PublicView 渲染免登录的 H5 浏览页（/p/:token）
+// 校验 token 不匹配或未配置 → 404，跟 gin 默认 404 一致，防止枚举
+func (s *Server) PublicView(c *gin.Context) {
+	token := strings.TrimSpace(c.Param("token"))
+	m, _ := s.st.GetAll()
+	expected := strings.TrimSpace(m["public_path"])
+	if expected == "" || token == "" || token != expected {
+		c.Header("Content-Type", "text/plain; charset=utf-8")
+		c.String(http.StatusNotFound, "404 page not found")
+		return
+	}
+	domains, err := s.st.ListDomains("", nil)
+	if err != nil {
+		c.Header("Content-Type", "text/plain; charset=utf-8")
+		c.String(http.StatusInternalServerError, "500 internal server error")
+		return
+	}
+	// 字段预处理：把时间戳/端口号/签发 CA 在后端 format 好，模板只做展示
+	items := make([]gin.H, 0, len(domains))
+	for _, d := range domains {
+		item := gin.H{
+			"host":         d.Host,
+			"subject":      d.Subject,
+			"issuer":       "",
+			"last_error":   d.LastError,
+			"not_after":    "",
+			"days":         d.DaysRemaining,
+			"http":         d.HTTPStatus,
+			"http_error":   d.HTTPError,
+			"http_checked": d.HTTPChecked != 0,
+			"tags":         d.Tags,
+			"notes":        d.Notes,
+			"checked":      "",
+		}
+		if d.NotAfter != 0 {
+			item["not_after"] = time.Unix(d.NotAfter, 0).Format("2006-01-02 15:04")
+		}
+		if d.LastChecked != 0 {
+			item["checked"] = time.Unix(d.LastChecked, 0).Format("2006-01-02 15:04")
+		}
+		if d.Port != 0 && d.Port != 443 {
+			item["host"] = fmt.Sprintf("%s:%d", d.Host, d.Port)
+		}
+		if d.IssuerOrg != "" {
+			item["issuer"] = d.IssuerOrg
+		} else if d.Issuer != "" {
+			item["issuer"] = d.Issuer
+		}
+		items = append(items, item)
+	}
+	c.HTML(http.StatusOK, "h5.html", gin.H{
+		"items": items,
+		"total": len(items),
+	})
+}
+
 // ---------------- 登录 / 登出 / 验证码 ----------------
 
 // Captcha 生成图形验证码（公开接口）
@@ -403,6 +459,7 @@ func (s *Server) handleGetSettings(c *gin.Context) {
 		"notify_cond_b_enabled":  getStr(m, "notify_cond_b_enabled", boolStr(def.NotifyCondBEnabled)),
 		"notify_cond_b_codes":    getStr(m, "notify_cond_b_codes", def.NotifyCondBCodes),
 		"cycle_interval_min":     getStr(m, "cycle_interval_min", strconv.Itoa(def.CycleIntervalMin)),
+		"public_path":            getStr(m, "public_path", def.PublicPath),
 	}
 	ok(c, out)
 }
@@ -441,6 +498,7 @@ func (s *Server) handleUpdateSettings(c *gin.Context) {
 		"notify_cond_b_enabled": "bool",
 		"notify_cond_b_codes":   "string",
 		"cycle_interval_min":    "int",
+		"public_path":           "string",
 	}
 	for key, kind := range allowed {
 		raw, ok := req[key]

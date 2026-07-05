@@ -3,12 +3,15 @@ package main
 import (
 	"context"
 	"embed"
+	"errors"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"cert-live/internal/api"
 	"cert-live/internal/auth"
@@ -83,11 +86,25 @@ func runServer() {
 	srv := api.New(cfg, st, assetsFS)
 	srv.StartScheduler(ctx)
 
+	// 起一个 goroutine 等 Ctrl+C / kill 信号:ctx cancel 后调用 Shutdown,
+	// 让 srv.Run 里的 ListenAndServe 主动返回,主 goroutine 才能退出。
+	// 不然 signal.NotifyContext 接管了信号,默认杀进程行为被覆盖,程序卡死。
+	go func() {
+		<-ctx.Done()
+		log.Printf("收到退出信号,正在关闭 HTTP 服务...")
+		shutCtx, shutCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutCancel()
+		if err := srv.Shutdown(shutCtx); err != nil {
+			log.Printf("shutdown 错误: %v", err)
+		}
+	}()
+
 	log.Printf("cert-live 启动于 http://localhost:%s  模式=%s  账号: %s",
 		cfg.AppPort, cfg.GinMode, cfg.AdminUser)
-	if err := srv.Run(":" + cfg.AppPort); err != nil {
+	if err := srv.Run(":" + cfg.AppPort); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
 	}
+	log.Printf("已退出")
 }
 
 // runResetAdmin 子命令：重置登录账号和密码。

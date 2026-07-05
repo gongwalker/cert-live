@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>域名监控 · CertLive</title>
+  <link rel="shortcut icon" type="image/x-icon" href="/static/image/favicon.ico">
+  <link rel="stylesheet" href="/static/lib/fontawesome/css/all.min.css">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg-from: #0c1425;
+      --bg-mid: #12264a;
+      --accent: #409eff;
+      --accent-3: #40b8ff;
+      --text-main: #ffffff;
+      --text-sub: #a0c4ee;
+      --text-muted: #7999c2;
+      --border: rgba(64, 158, 255, 0.18);
+      --ok: #22C55E;
+      --warn: #FFD166;
+      --danger: #FF6B6B;
+      --err: #94a3b8;
+    }
+    html, body { min-height: 100%; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: linear-gradient(180deg, var(--bg-from) 0%, var(--bg-mid) 100%);
+      color: var(--text-main);
+      padding: 16px 14px 40px;
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+      padding: 0 2px;
+    }
+    .title {
+      font-size: 17px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .title i { color: var(--accent-3); font-size: 16px; }
+    .count {
+      font-size: 11px;
+      color: var(--accent-3);
+      background: rgba(64, 158, 255, 0.12);
+      border: 1px solid var(--border);
+      padding: 4px 10px;
+      border-radius: 999px;
+      white-space: nowrap;
+    }
+    .card {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 14px;
+      margin-bottom: 10px;
+    }
+    .host {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-main);
+      word-break: break-all;
+      padding-bottom: 8px;
+      margin-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    .row {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      font-size: 12.5px;
+      padding: 3px 0;
+      min-height: 22px;
+    }
+    .label {
+      color: var(--text-muted);
+      font-size: 11px;
+      width: 44px;
+      flex-shrink: 0;
+      padding-top: 2px;
+    }
+    .val {
+      color: var(--text-main);
+      flex: 1;
+      word-break: break-all;
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 5px;
+    }
+    .sub {
+      font-size: 11px;
+      color: var(--text-muted);
+      width: 100%;
+      margin-top: 2px;
+    }
+    .err {
+      color: var(--danger);
+      font-size: 12px;
+      word-break: break-word;
+    }
+    .err i { margin-right: 4px; }
+    .muted { color: var(--text-muted); font-size: 12px; }
+    .mono { font-family: 'SF Mono', Menlo, Consolas, monospace; font-size: 12px; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 1px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 500;
+      white-space: nowrap;
+      line-height: 1.6;
+    }
+    .days-ok    { background: rgba(34, 197, 94, 0.15);  color: var(--ok); }
+    .days-warn  { background: rgba(255, 209, 102, 0.15); color: var(--warn); }
+    .days-danger{ background: rgba(255, 107, 107, 0.18); color: var(--danger); }
+    .http-ok    { background: rgba(34, 197, 94, 0.15);  color: var(--ok); }
+    .http-warn  { background: rgba(255, 209, 102, 0.15); color: var(--warn); }
+    .http-err   { background: rgba(255, 107, 107, 0.18); color: var(--danger); }
+    .http-none  { background: rgba(148, 163, 184, 0.12); color: var(--err); }
+    .tags { display: flex; flex-wrap: wrap; gap: 4px; }
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 1px 7px;
+      background: rgba(64, 158, 255, 0.1);
+      border: 1px solid rgba(64, 158, 255, 0.25);
+      border-radius: 3px;
+      font-size: 10px;
+      color: var(--accent-3);
+      line-height: 1.5;
+    }
+    .tag i { font-size: 9px; }
+    .notes-text {
+      color: var(--text-sub);
+      font-size: 12px;
+      line-height: 1.5;
+      word-break: break-word;
+      white-space: pre-wrap;
+      display: block;
+    }
+    .empty {
+      text-align: center;
+      color: var(--text-muted);
+      padding: 60px 20px;
+      font-size: 13px;
+    }
+    .empty i { font-size: 32px; opacity: 0.4; display: block; margin-bottom: 10px; }
+    .footer {
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 11px;
+      padding: 16px 0 0;
+      opacity: 0.6;
+    }
+    .footer i { margin-right: 4px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="title"><i class="fas fa-shield-halved"></i>证书监控</div>
+    <span class="count">共 {{.total}} 条</span>
+  </div>
+
+  {{if not .items}}
+  <div class="empty">
+    <i class="fas fa-folder-open"></i>
+    暂无监控数据
+  </div>
+  {{else}}
+    {{range .items}}
+    <div class="card">
+      <div class="host">{{.host}}</div>
+
+      <div class="row">
+        <span class="label">证书</span>
+        <span class="val">
+          {{if .subject}}
+            <span>{{.subject}}</span>
+          {{else if .last_error}}
+            <span class="err"><i class="fas fa-triangle-exclamation"></i>{{.last_error}}</span>
+          {{else}}
+            <span class="muted">尚未检测</span>
+          {{end}}
+        </span>
+      </div>
+
+      <div class="row">
+        <span class="label">有效期</span>
+        <span class="val">
+          {{if .not_after}}
+            <span class="mono">{{.not_after}}</span>
+            {{if lt .days 0}}
+              <span class="badge days-danger">已过期 {{abs .days}} 天</span>
+            {{else if le .days 7}}
+              <span class="badge days-danger">剩 {{.days}} 天</span>
+            {{else if le .days 30}}
+              <span class="badge days-warn">剩 {{.days}} 天</span>
+            {{else}}
+              <span class="badge days-ok">剩 {{.days}} 天</span>
+            {{end}}
+          {{else}}
+            <span class="muted">—</span>
+          {{end}}
+        </span>
+      </div>
+
+      <div class="row">
+        <span class="label">HTTP</span>
+        <span class="val">
+          {{if not .http_checked}}
+            <span class="badge http-none">未检测</span>
+          {{else if .http_error}}
+            <span class="badge http-err"><i class="fas fa-unlink"></i> 失败</span>
+          {{else if and (ge .http 200) (lt .http 400)}}
+            <span class="badge http-ok">{{.http}}</span>
+          {{else if and (ge .http 400) (lt .http 500)}}
+            <span class="badge http-warn">{{.http}}</span>
+          {{else if ge .http 500}}
+            <span class="badge http-err">{{.http}}</span>
+          {{else}}
+            <span class="badge http-none">{{.http}}</span>
+          {{end}}
+        </span>
+      </div>
+
+      <div class="row">
+        <span class="label">检测</span>
+        <span class="val">
+          {{if .checked}}
+            <span class="mono">{{.checked}}</span>
+          {{else}}
+            <span class="muted">从未</span>
+          {{end}}
+        </span>
+      </div>
+
+      {{if .tags}}
+      <div class="row">
+        <span class="label">标签</span>
+        <span class="val tags">
+          {{range .tags}}
+          <span class="tag">
+            {{if .Icon}}<i class="fas {{.Icon}}"></i>{{end}}
+            {{.Name}}
+          </span>
+          {{end}}
+        </span>
+      </div>
+      {{end}}
+
+      {{if .notes}}
+      <div class="row">
+        <span class="label">说明</span>
+        <span class="val notes-text">{{.notes}}</span>
+      </div>
+      {{end}}
+    </div>
+    {{end}}
+  {{end}}
+
+  <div class="footer">
+    <i class="fas fa-circle-info"></i>数据为最近一次探测结果
+  </div>
+</body>
+</html>

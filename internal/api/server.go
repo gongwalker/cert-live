@@ -38,7 +38,15 @@ func New(cfg *config.Config, st *store.Store, assets embed.FS) *Server {
 
 // loadTemplates 从 embed.FS 解析 templates/ 下的所有 *.html
 func (s *Server) loadTemplates() *template.Template {
-	return template.Must(template.ParseFS(s.assets, "templates/*.html"))
+	t := template.New("").Funcs(template.FuncMap{
+		"abs": func(v int) int { // 已过期天数显示用，避免模板里出现 "-8 天"
+			if v < 0 {
+				return -v
+			}
+			return v
+		},
+	})
+	return template.Must(t.ParseFS(s.assets, "templates/*.html"))
 }
 
 // staticFS 返回去一层 "static/" 前缀的子 FS，gin 可以直接 StaticFS 挂载

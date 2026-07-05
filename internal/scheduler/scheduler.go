@@ -341,5 +341,8 @@ func readSettings(st *store.Store) model.Settings {
 			s.CycleIntervalMin = n
 		}
 	}
+	if v, ok := m["public_path"]; ok {
+		s.PublicPath = v
+	}
 	return s
 }

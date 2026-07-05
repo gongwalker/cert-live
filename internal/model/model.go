@@ -57,7 +57,8 @@ type Settings struct {
 	NotifyCondBCodes   string `json:"notify_cond_b_codes"` // 逗号分隔，如 "200,201,204,301,302,304,307,308"
 
 	// 通用设置
-	CycleIntervalMin int `json:"cycle_interval_min"` // 探测 + 推送 整体周期（分钟）
+	CycleIntervalMin int    `json:"cycle_interval_min"` // 探测 + 推送 整体周期（分钟）
+	PublicPath       string `json:"public_path"`        // 公开 H5 访问的 token；为空 = 关闭公开访问。URL 形如 /p/<token>
 }
 
 // DefaultSettings 返回首次启动时各字段的兜底值，跟前端默认保持一致。
@@ -79,6 +80,7 @@ func DefaultSettings() Settings {
 		NotifyCondBCodes:   "200,201,204,301,302,304,307,308",
 
 		CycleIntervalMin: 20,
+		PublicPath:       "", // 默认关闭公开访问,用户在通用设置里配 token 后才开启
 	}
 }
 

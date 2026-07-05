@@ -201,6 +201,17 @@
             </div>
 
             <div class="field">
+              <label for="publicPathInput">公开 H5 访问路径</label>
+              <div class="field-control">
+                <div class="threshold-row">
+                  <span>/view/</span>
+                  <input type="text" id="publicPathInput" placeholder="留空关闭，填了即开启" autocomplete="off" spellcheck="false" style="text-align:left;width:220px">
+                </div>
+                <p class="field-help">填一个随机串（仅字母、数字、<code>-</code>、<code>_</code>，如 <code>team1-abc</code>），保存后访问 <code>/view/&lt;这个串&gt;</code> 即可免登录查看所有域名证书状态。留空 = 关闭公开访问。改完即时生效。</p>
+              </div>
+            </div>
+
+            <div class="field">
               <label>数据库备份 / 导入</label>
               <div class="field-control">
                 <div class="backup-row">

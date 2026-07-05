@@ -1290,6 +1290,7 @@
 
   // ===== 通用设置：加载 / 保存 =====
   var $cycleInterval = document.getElementById('cycleIntervalInput');
+  var $publicPath    = document.getElementById('publicPathInput');
   var $generalSave   = document.getElementById('generalSaveBtn');
 
   function loadGeneralSettings() {
@@ -1298,6 +1299,7 @@
       var min = parseInt(s.cycle_interval_min, 10);
       if (!min || min < 1 || min > 60) min = 20;
       $cycleInterval.value = min;
+      $publicPath.value = s.public_path || '';
     }).catch(function (err) {
       toast('加载通用设置失败：' + err.message, 'error');
     });
@@ -1310,9 +1312,15 @@
       $cycleInterval.focus();
       return;
     }
+    var path = ($publicPath.value || '').trim();
+    if (path && !/^[A-Za-z0-9_-]{1,64}$/.test(path)) {
+      toast('公开路径只能包含字母、数字、-、_，长度 1~64', 'error');
+      $publicPath.focus();
+      return;
+    }
     $generalSave.disabled = true;
-    api('PUT', '/api/settings', { cycle_interval_min: min }).then(function () {
-      toast('已保存，下一轮生效', 'success');
+    api('PUT', '/api/settings', { cycle_interval_min: min, public_path: path }).then(function () {
+      toast(path ? '已保存。访问 /view/' + path + ' 查看' : '已保存,公开访问已关闭', 'success');
     }).catch(function (err) {
       toast('保存失败：' + err.message, 'error');
     }).finally(function () {

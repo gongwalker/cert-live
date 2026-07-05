@@ -22,6 +22,10 @@ func (s *Server) routes() http.Handler {
 	r.GET("/logout", s.Logout)
 	r.GET("/api/captcha", s.Captcha)
 
+	// 免登录 H5 浏览页：/view/:token，token 在通用设置里配置
+	// handler 内部校验 token，未配置 / 不匹配 → 404
+	r.GET("/view/:token", s.PublicView)
+
 	// 后台页面（需登录）
 	r.GET("/", func(c *gin.Context) { c.Redirect(http.StatusFound, "/domains") })
 	r.GET("/domains", auth.RequireAuth(), s.DomainsPage)
