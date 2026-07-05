@@ -19,6 +19,7 @@
   var $count = document.getElementById('countBadge');
   var $search = document.getElementById('searchInput');
   var $toast = document.getElementById('toast');
+  var $notifyConds = document.getElementById('notifyConds');
 
   // 表单弹窗
   var $form = document.getElementById('domainForm');
@@ -52,6 +53,14 @@
     return String(s).replace(/[&<>"']/g, function (c) {
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
     });
+  }
+
+  // 后端 settings 表存的是字符串 "true"/"false"，归一化成布尔。
+  // 未定义（兜底不发生）时用 def，跟后端 DefaultSettings 语义保持一致。
+  function asBool(v, def) {
+    if (typeof v === 'boolean') return v;
+    if (typeof v === 'string') return v === 'true';
+    return !!def;
   }
 
   // 归一化主机名：去掉 scheme、path、查询串、首尾空白
@@ -200,6 +209,7 @@
     return api('GET', url).then(function (list) {
       state.domains = list || [];
       render();
+      renderNotifyConds();  // 列表数据变了，重判 chip 命中状态
     }).catch(function (err) {
       $body.innerHTML = '<tr><td colspan="8" style="padding:30px;text-align:center;color:#ff6b6b;">加载失败：' +
         escapeHTML(err.message) + '</td></tr>';
@@ -797,6 +807,83 @@
       chip.classList.add('active');
     }
     loadDomains();
+  });
+
+  // ===== 推送条件 chip（toolbar 下方，命中阈值时红色高亮）=====
+  // 缓存最近一次拉取的推送配置，配合 state.domains 实时算命中
+  var notifySettings = null;
+
+  function loadNotifyConds() {
+    return api('GET', '/api/settings').then(function (s) {
+      notifySettings = s || {};
+      renderNotifyConds();
+    }).catch(function () { /* 静默，设置弹窗里加载会再报错 */ });
+  }
+
+  // 遍历 state.domains 判断是否有域名命中条件 A / B
+  // A：证书剩余天数 ≤ 阈值（含已过期，未探测 / 探测失败的跳过）
+  // B：HTTP 探测过 且 状态码不在白名单 / 探测失败
+  function computeNotifyTriggered() {
+    var a = asBool(notifySettings.notify_cond_a_enabled, true);
+    var b = asBool(notifySettings.notify_cond_b_enabled, false);
+    var aDays = parseInt(notifySettings.notify_cond_a_days, 10) || 30;
+    var bCodes = (notifySettings.notify_cond_b_codes || '').split(',')
+      .map(function (s) { return parseInt(s.trim(), 10); })
+      .filter(function (n) { return n > 0; });
+    var aTri = false, bTri = false;
+    for (var i = 0; i < state.domains.length; i++) {
+      var d = state.domains[i];
+      if (a && !d.last_error && d.not_after && typeof d.days_remaining === 'number' && d.days_remaining <= aDays) {
+        aTri = true;
+      }
+      if (b && d.http_checked && (d.http_error || bCodes.indexOf(d.http_status) === -1)) {
+        bTri = true;
+      }
+      if (aTri && bTri) break;
+    }
+    return { aTri: aTri, bTri: bTri };
+  }
+
+  function renderNotifyConds() {
+    if (!notifySettings || !$notifyConds) { if ($notifyConds) $notifyConds.innerHTML = ''; return; }
+    var a = asBool(notifySettings.notify_cond_a_enabled, true);
+    var b = asBool(notifySettings.notify_cond_b_enabled, false);
+
+    // 两个都没启用 → 红色警告条
+    if (!a && !b) {
+      $notifyConds.innerHTML = '<button type="button" class="notify-conds-warn" data-jump-notify="1">' +
+        '<i class="fas fa-triangle-exclamation"></i>推送未启用,命中条件也不会通知 · 点此开启' +
+      '</button>';
+      return;
+    }
+
+    var tri = computeNotifyTriggered();
+    var html = '<span class="notify-conds-label"><i class="fas fa-bell"></i>推送条件</span>';
+    if (a) {
+      var aDays = parseInt(notifySettings.notify_cond_a_days, 10) || 30;
+      html += '<button type="button" class="notify-chip' + (tri.aTri ? ' triggered' : '') + '" data-jump-notify="1" title="证书剩余天数 ≤ ' + aDays + ' 天 触发推送,点击修改">' +
+        '证书 ≤ <b>' + aDays + '</b> 天' +
+      '</button>';
+    }
+    if (a && b) html += '<span class="notify-conds-or">OR</span>';
+    if (b) {
+      var bCodes = (notifySettings.notify_cond_b_codes || '200,201,204,301,302,304,307,308').trim();
+      html += '<button type="button" class="notify-chip' + (tri.bTri ? ' triggered' : '') + '" data-jump-notify="1" title="HTTP 状态码不在白名单 触发推送,点击修改">' +
+        'HTTP 不在 <b>{' + escapeHTML(bCodes) + '}</b>' +
+      '</button>';
+    }
+    $notifyConds.innerHTML = html;
+  }
+
+  // 点 chip / 警告条 → 打开设置弹窗 + 切到通知 tab
+  $notifyConds.addEventListener('click', function (e) {
+    var btn = e.target.closest('[data-jump-notify]');
+    if (!btn) return;
+    Modal.open('settingsModal');
+    setTimeout(function () {
+      var tab = document.querySelector('.settings-tab[data-settings-tab="notify"]');
+      if (tab) tab.click();
+    }, 50);
   });
 
   function openDelete(id) {
@@ -1668,10 +1755,10 @@
       applyChannelUI();
 
       // 条件 A：默认勾选、默认 30 天
-      $condA.checked = s.notify_cond_a_enabled !== false;
+      $condA.checked = asBool(s.notify_cond_a_enabled, true);
       $condADays.value = s.notify_cond_a_days || 30;
       // 条件 B：默认不勾选
-      $condB.checked = !!s.notify_cond_b_enabled;
+      $condB.checked = asBool(s.notify_cond_b_enabled, false);
       $condBCodes.value = s.notify_cond_b_codes || '200,201,204,301,302,304,307,308';
 
       updateNotifySaveState();
@@ -1734,6 +1821,7 @@
     $notifySave.disabled = true;
     api('PUT', '/api/settings', body).then(function () {
       toast('已保存', 'success');
+      loadNotifyConds();  // 同步刷新工具栏的推送条件 chip
     }).catch(function (err) {
       toast('保存失败：' + err.message, 'error');
     }).finally(function () {
@@ -1744,6 +1832,7 @@
 
   // ===== 启动 =====
   refreshAllTags().then(loadDomains);
+  loadNotifyConds();  // 拉一次推送配置，渲染工具栏的 chip
 
   // 定时刷新（每 60s 拉取最新数据，不打断用户操作）
   setInterval(function () {
