@@ -228,7 +228,7 @@ docker run -d --name cert-live \
   -e SESSION_SECRET="$(openssl rand -hex 32)" \
   -e ADMIN_USER=admin \
   -e ADMIN_PASS=StrongPass123 \
-  gongwen/cert-live:v1.1.0
+  gongwen/cert-live:v1.2.0
 ```
 
 版本号跟 GitHub release 一一对应,见 [Tags 页面](https://hub.docker.com/r/gongwen/cert-live/tags)。
