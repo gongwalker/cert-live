@@ -76,9 +76,9 @@ docker-image: ## 本地构建镜像(单架构,不推送)。可覆盖:make docker
 
 docker-buildx-init: ## 创建支持多架构的 buildx builder(docker-container driver,只需一次)
 	@docker buildx inspect $(BUILDX_BUILDER) >/dev/null 2>&1 || \
-		docker buildx create --name $(BUILDX_BUILDER) --driver docker-container --use
+		docker buildx create --name $(BUILDX_BUILDER) --driver docker-container --config buildkitd.toml --use
 	@docker buildx use $(BUILDX_BUILDER)
-	@echo "buildx builder 就绪: $(BUILDX_BUILDER) (driver=docker-container)"
+	@echo "buildx builder 就绪: $(BUILDX_BUILDER) (driver=docker-container, mirror=daocloud/1ms)"
 
 docker-push: docker-buildx-init ## 多架构构建并推送到 Docker Hub(amd64 + arm64)。需先 docker login
 	docker buildx build \

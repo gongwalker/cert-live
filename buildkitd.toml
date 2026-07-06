@@ -1,0 +1,9 @@
+# buildkitd 配置:为 docker.io 配置国内镜像加速
+# 用法:docker buildx create --config buildkitd.toml ...
+# 作用:让 buildx 的 docker-container driver 不再直连 docker.io / auth.docker.io,
+#       改走国内 mirror,绕开 TLS 握手超时问题。
+[registry."docker.io"]
+  mirrors = [
+    "docker.m.daocloud.io",
+    "docker.1ms.run",
+  ]
