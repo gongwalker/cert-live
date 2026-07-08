@@ -356,6 +356,38 @@ docker compose start
 
 或用 Web UI 里的「备份」按钮（`GET /api/backup` 会下 `.db` 文件，基于 `VACUUM INTO` 出一致快照，无需停服务）。
 
+### 故障排查：容器内 DNS 解析超时（`lookup xxx: i/o timeout`）
+
+**症状**：cert-live 日志报 `dial tcp: lookup xxx: i/o timeout`，所有域名探测都失败，但宿主机 `dig`/`nslookup` 同一个域名正常。
+
+**两种常见根因**：
+
+**1. 云厂内部 DNS 在容器内不响应**（典型：腾讯云 `183.60.x`，基于源 IP 鉴权，容器走 docker0 NAT 后响应被丢）
+
+给容器指定公共 DNS 即可（本文档所有 `docker run` 示例默认已加）：
+
+```bash
+--dns 119.29.29.29 --dns 223.5.5.5
+```
+
+**2. `/etc/docker/daemon.json` 里设了 `"iptables": false`，docker 没建立容器网络的转发规则**
+
+这条更隐蔽 —— 改 DNS server 救不了，因为容器到外网的所有流量（UDP 53 也不例外）都被宿主机 FORWARD 链默认 DROP。
+
+诊断：
+
+```bash
+# 看宿主机 FORWARD 链是否有 DOCKER-USER / DOCKER-FORWARD（空的就是 docker 没建规则）
+iptables -L FORWARD -n | head -5
+
+# 看 daemon.json 是否禁用了 iptables
+cat /etc/docker/daemon.json
+```
+
+修复：把 `"iptables": false` 改成 `"iptables": true`（或直接删掉这行），然后 `systemctl restart docker`，docker 会自动重建所有 FORWARD/MASQUERADE 规则。
+
+> 重启 docker 会影响所有容器（短暂断网几秒，数据卷不丢）。没设 `restart: unless-stopped` 的容器需要手动 `docker start <name>` 拉起。
+
 ## 推送变量
 
 模板里这些占位符发送时会被替换：
