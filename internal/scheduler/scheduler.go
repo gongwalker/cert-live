@@ -93,13 +93,7 @@ func (s *Scheduler) maybePushOne(d model.Domain) {
 	if !ok {
 		return
 	}
-	if !evalConds(d, settings, parseHTTPWhitelist(settings.NotifyCondBCodes)) {
-		return
-	}
-	rendered := notify.Render(tmpl, buildVars(d, settings))
-	if err := ch.Send(rendered); err != nil {
-		log.Printf("notify: send %s: %v", d.Host, err)
-	}
+	s.evalAndNotify(d, settings, ch, tmpl, parseHTTPWhitelist(settings.NotifyCondBCodes))
 }
 
 // probeAll 并发探测所有域名，并发度受 probeParallel 控制。
@@ -129,7 +123,7 @@ func (s *Scheduler) probeAll(ctx context.Context) {
 }
 
 // probeOne 探测单个域名：TLS 拿证书 + HTTP 拿状态码，写回 domains 表。
-// 失败时只写 last_error，下一轮照样探（不做退避，靠 probe 内部的 10s 超时兜底）。
+// 失败时清空所有证书 + HTTP 字段（避免下次推送渲染陈旧数据），下一轮照样探（不做退避）。
 // 返回写库后的最新记录（即便 probe 出错也会返回带 LastError 的 rec），供调用方做后续处理。
 func (s *Scheduler) probeOne(domainID int64) (model.Domain, error) {
 	dom, err := s.st.GetDomain(domainID)
@@ -143,6 +137,19 @@ func (s *Scheduler) probeOne(domainID int64) (model.Domain, error) {
 		rec := *dom
 		rec.LastChecked = now
 		rec.LastError = err.Error()
+		// 探测失败 → 证书 / HTTP 全部失效,清掉上一轮的陈旧值,避免条件 C 推送渲染出旧数据 + 错误并存的消息
+		rec.Subject = ""
+		rec.Issuer = ""
+		rec.IssuerOrg = ""
+		rec.SANs = nil
+		rec.SerialNumber = ""
+		rec.NotBefore = 0
+		rec.NotAfter = 0
+		rec.IsWildcard = false
+		rec.DaysRemaining = 0
+		rec.HTTPStatus = 0
+		rec.HTTPError = ""
+		rec.HTTPChecked = 0
 		if e := s.st.UpdateDomainProbe(rec); e != nil {
 			log.Printf("scheduler: update probe for %s: %v", dom.Host, e)
 		}
@@ -174,7 +181,7 @@ func (s *Scheduler) probeOne(domainID int64) (model.Domain, error) {
 	return rec, nil
 }
 
-// scanAndPush 扫所有域名，命中条件 A 或 B 就立即推（不去重）。
+// scanAndPush 扫所有域名，命中条件 A / B / C 任一就立即推（每轮都推，无去重）。
 func (s *Scheduler) scanAndPush() {
 	settings := readSettings(s.st)
 	ch, tmpl, ok := resolveChannel(settings)
@@ -188,20 +195,35 @@ func (s *Scheduler) scanAndPush() {
 	}
 	httpWhitelist := parseHTTPWhitelist(settings.NotifyCondBCodes)
 	for _, d := range domains {
-		if !evalConds(d, settings, httpWhitelist) {
-			continue
-		}
-		rendered := notify.Render(tmpl, buildVars(d, settings))
-		if err := ch.Send(rendered); err != nil {
-			log.Printf("notify: send %s: %v", d.Host, err)
-		}
+		s.evalAndNotify(d, settings, ch, tmpl, httpWhitelist)
+	}
+}
+
+// evalAndNotify 判定单条域名是否命中推送条件 A / B / C，命中就推。
+//
+//	A：证书剩余天数 ≤ 阈值（仅探测成功时判定）
+//	B：HTTP 状态码不在白名单（仅探测成功时判定）
+//	C：探测失败（DNS / 连接 / TLS 握手）—— 失败期间每轮都推，催运维去确认。
+func (s *Scheduler) evalAndNotify(d model.Domain, settings model.Settings, ch notify.Channel, tmpl string, httpWhitelist map[int]bool) {
+	curFail := d.LastError != ""
+	probed := !curFail && d.NotAfter != 0 // A/B 前提：探测成功且拿到证书
+	hitA := settings.NotifyCondAEnabled && probed && d.DaysRemaining < settings.NotifyCondADays
+	hitB := settings.NotifyCondBEnabled && probed && !httpWhitelist[d.HTTPStatus]
+	hitC := settings.NotifyCondCEnabled && curFail
+
+	if !hitA && !hitB && !hitC {
+		return
+	}
+	rendered := notify.Render(tmpl, buildVars(d, settings))
+	if err := ch.Send(rendered); err != nil {
+		log.Printf("notify: send %s: %v", d.Host, err)
 	}
 }
 
 // resolveChannel 从 settings 解出当前激活渠道 + 对应模板。
-// 返回 ok=false 表示：条件 A/B 全未启用，或激活平台的 webhook 为空。
+// 返回 ok=false 表示：条件 A/B/C 全未启用，或激活平台的 webhook 为空。
 func resolveChannel(settings model.Settings) (ch notify.Channel, tmpl string, ok bool) {
-	if !settings.NotifyCondAEnabled && !settings.NotifyCondBEnabled {
+	if !settings.NotifyCondAEnabled && !settings.NotifyCondBEnabled && !settings.NotifyCondCEnabled {
 		return notify.Channel{}, "", false
 	}
 	switch settings.NotifyChannel {
@@ -224,17 +246,6 @@ func resolveChannel(settings model.Settings) (ch notify.Channel, tmpl string, ok
 			Format:   settings.NotifyFeishuFormat,
 		}, settings.NotifyFeishuText, true
 	}
-}
-
-// evalConds 判定单条域名是否命中推送条件 A 或 B。
-// 探测失败 / 未探测过的直接判 false，避免误报。
-func evalConds(d model.Domain, settings model.Settings, httpWhitelist map[int]bool) bool {
-	if d.LastError != "" || d.NotAfter == 0 {
-		return false
-	}
-	hitA := settings.NotifyCondAEnabled && d.DaysRemaining < settings.NotifyCondADays
-	hitB := settings.NotifyCondBEnabled && !httpWhitelist[d.HTTPStatus]
-	return hitA || hitB
 }
 
 // parseHTTPWhitelist "200,204,304" → map[int]bool{200:true, ...}
@@ -298,6 +309,7 @@ func buildVars(d model.Domain, settings model.Settings) notify.Vars {
 		Time:       time.Now().Format("2006-01-02 15:04:05"),
 		ViewURL:    viewURL,
 		NotifyRule: renderNotifyRule(settings),
+		LastError:  d.LastError,
 	}
 }
 
@@ -305,7 +317,8 @@ func buildVars(d model.Domain, settings model.Settings) notify.Vars {
 // 跟前端 domains.js renderNotifyConds 的 chip 文字保持一致：
 //   - 仅启用 A：证书 ≤ 30 天
 //   - 仅启用 B：HTTP 不在 {200,201,204}
-//   - 都启用：   证书 ≤ 30 天 OR HTTP 不在 {200,201,204}
+//   - 仅启用 C：探测失败
+//   - 多个启用：用 OR 连接
 //   - 都没启用：（空串，调用方一般也不会触发推送）
 func renderNotifyRule(s model.Settings) string {
 	var parts []string
@@ -318,6 +331,9 @@ func renderNotifyRule(s model.Settings) string {
 			codes = "200,201,204,301,302,304,307,308"
 		}
 		parts = append(parts, "HTTP 不在 {"+codes+"}")
+	}
+	if s.NotifyCondCEnabled {
+		parts = append(parts, "探测失败")
 	}
 	return strings.Join(parts, " OR ")
 }
@@ -364,6 +380,9 @@ func readSettings(st *store.Store) model.Settings {
 	}
 	if v, ok := m["notify_cond_b_codes"]; ok {
 		s.NotifyCondBCodes = v
+	}
+	if v, ok := m["notify_cond_c_enabled"]; ok {
+		s.NotifyCondCEnabled = v == "true"
 	}
 	if v, ok := m["cycle_interval_min"]; ok {
 		if n, err := strconv.Atoi(v); err == nil {

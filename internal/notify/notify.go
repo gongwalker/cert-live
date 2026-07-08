@@ -49,6 +49,7 @@ type Vars struct {
 	Time       string
 	ViewURL    string // 详情查看 URL，形如 /view/<token>?id=<share_id>；公开访问未开启时为空
 	NotifyRule string // 当前推送条件的人类可读描述，跟列表页 chip 一致（如"证书 ≤ 30 天 OR HTTP 不在 {200,201,204}"）
+	LastError  string // 条件 C 用：探测失败的错误信息（如 "dial tcp: lookup ...: no such host"）。成功时为空
 }
 
 var (
@@ -76,6 +77,7 @@ func Render(tmpl string, v Vars) string {
 		"{$time}":        v.Time,
 		"{$viewurl}":     v.ViewURL,
 		"{$notify_rule}": v.NotifyRule,
+		"{$last_error}":  v.LastError,
 	}
 	out := tmpl
 	for k, val := range repl {

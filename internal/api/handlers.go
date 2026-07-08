@@ -474,6 +474,7 @@ func (s *Server) handleGetSettings(c *gin.Context) {
 		"notify_cond_a_days":     getStr(m, "notify_cond_a_days", strconv.Itoa(def.NotifyCondADays)),
 		"notify_cond_b_enabled":  getStr(m, "notify_cond_b_enabled", boolStr(def.NotifyCondBEnabled)),
 		"notify_cond_b_codes":    getStr(m, "notify_cond_b_codes", def.NotifyCondBCodes),
+		"notify_cond_c_enabled":  getStr(m, "notify_cond_c_enabled", boolStr(def.NotifyCondCEnabled)),
 		"cycle_interval_min":     getStr(m, "cycle_interval_min", strconv.Itoa(def.CycleIntervalMin)),
 		"public_path":            getStr(m, "public_path", def.PublicPath),
 	}
@@ -513,6 +514,7 @@ func (s *Server) handleUpdateSettings(c *gin.Context) {
 		"notify_cond_a_days":    "int",
 		"notify_cond_b_enabled": "bool",
 		"notify_cond_b_codes":   "string",
+		"notify_cond_c_enabled": "bool",
 		"cycle_interval_min":    "int",
 		"public_path":           "string",
 	}

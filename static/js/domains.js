@@ -820,17 +820,19 @@
     }).catch(function () { /* 静默，设置弹窗里加载会再报错 */ });
   }
 
-  // 遍历 state.domains 判断是否有域名命中条件 A / B
+  // 遍历 state.domains 判断是否有域名命中条件 A / B / C
   // A：证书剩余天数 ≤ 阈值（含已过期，未探测 / 探测失败的跳过）
   // B：HTTP 探测过 且 状态码不在白名单 / 探测失败
+  // C：探测失败（DNS / 连接 / TLS 握手）—— chip 高亮表示当前有失败域名
   function computeNotifyTriggered() {
     var a = asBool(notifySettings.notify_cond_a_enabled, true);
     var b = asBool(notifySettings.notify_cond_b_enabled, false);
+    var c = asBool(notifySettings.notify_cond_c_enabled, true);
     var aDays = parseInt(notifySettings.notify_cond_a_days, 10) || 30;
     var bCodes = (notifySettings.notify_cond_b_codes || '').split(',')
       .map(function (s) { return parseInt(s.trim(), 10); })
       .filter(function (n) { return n > 0; });
-    var aTri = false, bTri = false;
+    var aTri = false, bTri = false, cTri = false;
     for (var i = 0; i < state.domains.length; i++) {
       var d = state.domains[i];
       if (a && !d.last_error && d.not_after && typeof d.days_remaining === 'number' && d.days_remaining <= aDays) {
@@ -839,18 +841,22 @@
       if (b && d.http_checked && (d.http_error || bCodes.indexOf(d.http_status) === -1)) {
         bTri = true;
       }
-      if (aTri && bTri) break;
+      if (c && d.last_error) {
+        cTri = true;
+      }
+      if (aTri && bTri && cTri) break;
     }
-    return { aTri: aTri, bTri: bTri };
+    return { aTri: aTri, bTri: bTri, cTri: cTri };
   }
 
   function renderNotifyConds() {
     if (!notifySettings || !$notifyConds) { if ($notifyConds) $notifyConds.innerHTML = ''; return; }
     var a = asBool(notifySettings.notify_cond_a_enabled, true);
     var b = asBool(notifySettings.notify_cond_b_enabled, false);
+    var c = asBool(notifySettings.notify_cond_c_enabled, true);
 
-    // 两个都没启用 → 红色警告条
-    if (!a && !b) {
+    // 全都没启用 → 红色警告条
+    if (!a && !b && !c) {
       $notifyConds.innerHTML = '<button type="button" class="notify-conds-warn" data-jump-notify="1">' +
         '<i class="fas fa-triangle-exclamation"></i>推送未启用,命中条件也不会通知 · 点此开启' +
       '</button>';
@@ -859,18 +865,28 @@
 
     var tri = computeNotifyTriggered();
     var html = '<span class="notify-conds-label"><i class="fas fa-bell"></i>推送条件</span>';
+    // 启用项依次入列，相邻项之间插 OR 分隔
+    var parts = [];
     if (a) {
       var aDays = parseInt(notifySettings.notify_cond_a_days, 10) || 30;
-      html += '<button type="button" class="notify-chip' + (tri.aTri ? ' triggered' : '') + '" data-jump-notify="1" title="证书剩余天数 ≤ ' + aDays + ' 天 触发推送,点击修改">' +
+      parts.push('<button type="button" class="notify-chip' + (tri.aTri ? ' triggered' : '') + '" data-jump-notify="1" title="证书剩余天数 ≤ ' + aDays + ' 天 触发推送,点击修改">' +
         '证书 ≤ <b>' + aDays + '</b> 天' +
-      '</button>';
+      '</button>');
     }
-    if (a && b) html += '<span class="notify-conds-or">OR</span>';
     if (b) {
       var bCodes = (notifySettings.notify_cond_b_codes || '200,201,204,301,302,304,307,308').trim();
-      html += '<button type="button" class="notify-chip' + (tri.bTri ? ' triggered' : '') + '" data-jump-notify="1" title="HTTP 状态码不在白名单 触发推送,点击修改">' +
+      parts.push('<button type="button" class="notify-chip' + (tri.bTri ? ' triggered' : '') + '" data-jump-notify="1" title="HTTP 状态码不在白名单 触发推送,点击修改">' +
         'HTTP 不在 <b>{' + escapeHTML(bCodes) + '}</b>' +
-      '</button>';
+      '</button>');
+    }
+    if (c) {
+      parts.push('<button type="button" class="notify-chip' + (tri.cTri ? ' triggered' : '') + '" data-jump-notify="1" title="DNS / 连接 / TLS 握手失败 触发推送,失败期间每轮都推,点击修改">' +
+        '探测失败' +
+      '</button>');
+    }
+    for (var i = 0; i < parts.length; i++) {
+      if (i > 0) html += '<span class="notify-conds-or">OR</span>';
+      html += parts[i];
     }
     $notifyConds.innerHTML = html;
   }
@@ -1406,6 +1422,7 @@
   var $condADays     = document.getElementById('condADays');
   var $condB         = document.getElementById('condB');
   var $condBCodes    = document.getElementById('condBCodes');
+  var $condC         = document.getElementById('condC');
   var NOTIFY_TEXT_MAX = 1000;
 
   var CHANNEL_META = {
@@ -1527,7 +1544,8 @@ var VAR_ROWS = [
     ['{$tags}', '所有标签，空格分隔'],
     ['{$notes}', '说明'],
     ['{$viewurl}', '详情查看 URL（点开定位到该域名，需配置公开访问路径）'],
-    ['{$notify_rule}', '当前推送条件（如：证书 ≤ 30 天 OR HTTP 不在 {200,201,204}）']
+    ['{$notify_rule}', '当前推送条件（如：证书 ≤ 30 天 OR HTTP 不在 {200,201,204}）'],
+    ['{$last_error}', '探测失败原因（仅条件 C 触发时有值，如：dial tcp: lookup xxx: no such host）']
   ];
   var $varTipTrigger = document.getElementById('varTipTrigger');
   var $varHelp = null;
@@ -1770,6 +1788,8 @@ var VAR_ROWS = [
       // 条件 B：默认不勾选
       $condB.checked = asBool(s.notify_cond_b_enabled, false);
       $condBCodes.value = s.notify_cond_b_codes || '200,201,204,301,302,304,307,308';
+      // 条件 C：默认勾选（探测失败状态翻转告警）
+      $condC.checked = asBool(s.notify_cond_c_enabled, true);
 
       updateNotifySaveState();
     }).catch(function (err) {
@@ -1777,14 +1797,15 @@ var VAR_ROWS = [
     });
   }
 
-  // 至少勾选 A / B 一个，否则保存按钮置灰
+  // 至少勾选 A / B / C 一个，否则保存按钮置灰
   function updateNotifySaveState() {
-    var ok = $condA.checked || $condB.checked;
+    var ok = $condA.checked || $condB.checked || $condC.checked;
     $notifySave.disabled = !ok;
     $notifySave.title = ok ? '' : '请至少启用一个推送条件';
   }
   $condA.addEventListener('change', updateNotifySaveState);
   $condB.addEventListener('change', updateNotifySaveState);
+  $condC.addEventListener('change', updateNotifySaveState);
 
   function saveNotifySettings() {
     // 提交前最后同步一次当前平台的 UI 到 store
@@ -1792,7 +1813,8 @@ var VAR_ROWS = [
 
     var aOn = $condA.checked;
     var bOn = $condB.checked;
-    if (!aOn && !bOn) {
+    var cOn = $condC.checked;
+    if (!aOn && !bOn && !cOn) {
       toast('请至少启用一个推送条件', 'error');
       return;
     }
@@ -1826,7 +1848,8 @@ var VAR_ROWS = [
       notify_cond_a_enabled:  aOn,
       notify_cond_a_days:     aDays,
       notify_cond_b_enabled:  bOn,
-      notify_cond_b_codes:    bCodes
+      notify_cond_b_codes:    bCodes,
+      notify_cond_c_enabled:  cOn
     };
     $notifySave.disabled = true;
     api('PUT', '/api/settings', body).then(function () {

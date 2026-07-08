@@ -60,6 +60,10 @@ type Settings struct {
 	NotifyCondBEnabled bool `json:"notify_cond_b_enabled"`
 	NotifyCondBCodes   string `json:"notify_cond_b_codes"` // 逗号分隔，如 "200,201,204,301,302,304,307,308"
 
+	// 条件 C：探测失败(DNS / 连接 / TLS 握手)— 比 A/B 更紧急(域名被注销 / DNS 配错 / 服务挂),
+	// 失败期间每一轮都推一次(跟 A/B 一样不去重),催运维去定位根因。默认开。
+	NotifyCondCEnabled bool `json:"notify_cond_c_enabled"`
+
 	// 通用设置
 	CycleIntervalMin int    `json:"cycle_interval_min"` // 探测 + 推送 整体周期（分钟）
 	PublicPath       string `json:"public_path"`        // 公开 H5 访问的 token；为空 = 关闭公开访问。URL 形如 /p/<token>
@@ -82,6 +86,7 @@ func DefaultSettings() Settings {
 		NotifyCondADays:    30,
 		NotifyCondBEnabled: false,
 		NotifyCondBCodes:   "200,201,204,301,302,304,307,308",
+		NotifyCondCEnabled: true,
 
 		CycleIntervalMin: 20,
 		PublicPath:       "", // 默认关闭公开访问,用户在通用设置里配 token 后才开启
