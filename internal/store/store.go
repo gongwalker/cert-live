@@ -56,34 +56,50 @@ func (s *Store) EnsureSchema() error {
 	if _, err := s.db.Exec(schema); err != nil {
 		return err
 	}
-	// 老库兼容：share_id 字段不存在则补上
-	rows, err := s.db.Query(`PRAGMA table_info(domains)`)
+	// 老库兼容：share_id 字段是后加的,CREATE TABLE IF NOT EXISTS 不会给已存在的表补字段,
+	// 用 addColumnIfMissing 探测 + ALTER 兜底。以后新加字段照抄即可。
+	if err := s.addColumnIfMissing("domains", "share_id", "TEXT"); err != nil {
+		return err
+	}
+	// share_id 唯一索引：partial index，只对非 NULL 值约束唯一
+	if _, err := s.db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_domains_share_id ON domains(share_id) WHERE share_id IS NOT NULL`); err != nil {
+		return err
+	}
+	return nil
+}
+
+// addColumnIfMissing 检测 table 里有没有 column,缺了就用 def 作为列定义 ALTER 补上。
+// 用途:CREATE TABLE IF NOT EXISTS 对已存在的表是 no-op,后加的字段必须靠这个函数兜底,
+// 否则老备份恢复 / 老库升级会报 "no such column"。
+//
+//	def 示例:
+//	  "TEXT"
+//	  "INTEGER NOT NULL DEFAULT 1"
+//	  "TEXT DEFAULT NULL"
+//
+// 注意 SQLite 的 ALTER ADD COLUMN 限制:
+//   - 带 NOT NULL 必须给 DEFAULT(回填老行)
+//   - 不能加 PRIMARY KEY / UNIQUE 约束
+func (s *Store) addColumnIfMissing(table, column, def string) error {
+	rows, err := s.db.Query(fmt.Sprintf(`PRAGMA table_info(%s)`, table))
 	if err != nil {
 		return err
 	}
-	hasShareID := false
+	defer rows.Close()
 	for rows.Next() {
 		var cid int
 		var name, ctype string
 		var notnull, pk int
 		var dflt sql.NullString
 		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
-			rows.Close()
 			return err
 		}
-		if name == "share_id" {
-			hasShareID = true
+		if name == column {
+			return nil // 已存在,不补
 		}
 	}
-	rows.Close()
-	if !hasShareID {
-		if _, err := s.db.Exec(`ALTER TABLE domains ADD COLUMN share_id TEXT`); err != nil {
-			return err
-		}
-	}
-	// share_id 唯一索引：partial index，只对非 NULL 值约束唯一
-	if _, err := s.db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_domains_share_id ON domains(share_id) WHERE share_id IS NOT NULL`); err != nil {
-		return err
+	if _, err := s.db.Exec(fmt.Sprintf(`ALTER TABLE %s ADD COLUMN %s %s`, table, column, def)); err != nil {
+		return fmt.Errorf("migrate %s.%s: %w", table, column, err)
 	}
 	return nil
 }

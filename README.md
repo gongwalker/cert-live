@@ -518,6 +518,37 @@ SQLite 单文件,启用 `foreign_keys=ON`、`busy_timeout=5000ms`,Go 侧 `MaxOpe
 - 登录相关:`login_user` = 用户名、`login_password` = bcrypt 哈希
 - 周期:`cycle_interval_min`
 
+### Schema 迁移:加字段 SOP
+
+> ⚠️ **`CREATE TABLE IF NOT EXISTS` 对已存在的表是 no-op,不会补字段**。新加列必须配套写迁移,否则老备份恢复会直接报 `no such column` 炸掉。
+
+项目里有现成的 helper:`store.addColumnIfMissing(table, column, def)`(`internal/store/store.go`)。下次给 `domains` 加字段(假设 `monitor_enabled INTEGER NOT NULL DEFAULT 1`)只要改 5 处:
+
+1. **`internal/store/schema.go`** — `CREATE TABLE` 加列(全新部署用):
+   ```go
+   http_checked INTEGER,
+   monitor_enabled INTEGER NOT NULL DEFAULT 1   -- 新增
+   );
+   ```
+2. **`internal/store/store.go` `EnsureSchema()`** — 加一行(老库 / 老备份升级用):
+   ```go
+   if err := s.addColumnIfMissing("domains", "monitor_enabled", "INTEGER NOT NULL DEFAULT 1"); err != nil {
+       return err
+   }
+   ```
+3. **`internal/store/schema.go`** — `domainListQuery` / `domainGetQuery` 的 `SELECT` 加列;`scanDomain` 加一行 `&d.MonitorEnabled`
+4. **`internal/store/store.go`** — `CreateDomain` 的 `INSERT` / `UpdateDomain` / `UpdateDomainProbe` 的 `UPDATE` 加列
+5. **`internal/model/model.go`** — `Domain` struct 加字段
+
+**SQLite `ALTER ADD COLUMN` 三个限制**(helper 不会绕过,def 写错会直接报错):
+- 带 `NOT NULL` 必须给 `DEFAULT`(SQLite 靠默认值回填老行)
+- 不能加 `PRIMARY KEY` / `UNIQUE` 约束(要的话只能重建表)
+- 不能改字段类型 / 删字段 / 改约束(项目策略是"删 db 重来",见 `schema.go` 顶部注释)
+
+**为什么 `share_id` 有特殊处理**:它是 v1.x 升级到带 deep link 版本时后加的字段,`EnsureSchema` 里调用了 `addColumnIfMissing("domains", "share_id", "TEXT")` + 单独建了 partial UNIQUE 索引。
+
+> 💡 **`settings` 表加 key 不需要迁移** — KV 结构,新 key 不在表里时 `scheduler.readSettings` 用 `DefaultSettings()` 兜底(本次条件 C 的 `notify_cond_c_enabled` 就是这么处理的)。
+
 ## License
 
 见 [LICENSE](LICENSE)。
