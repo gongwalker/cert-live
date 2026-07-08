@@ -15,5 +15,5 @@ WORKDIR /app
 # 二进制已用 go:embed 内嵌 templates 和 static，无需再 COPY 资源文件
 COPY --from=builder /app/cert-live .
 VOLUME /app/data
-EXPOSE 9527
+EXPOSE 8080
 ENTRYPOINT ["./cert-live", "serve"]

@@ -222,6 +222,8 @@ docker run -d \
 
 ```bash
 docker run -d --name cert-live \
+  --dns 119.29.29.29 \
+  --dns 223.5.5.5 \
   -p 8080:8080 \
   --log-driver json-file \
   --log-opt max-size=10m \
@@ -251,6 +253,8 @@ docker build -t cert-live:latest .
 docker run -d \
   --name cert-live \
   --restart unless-stopped \
+  --dns 119.29.29.29 \
+  --dns 223.5.5.5 \
   -p 8080:8080 \
   --log-driver json-file \
   --log-opt max-size=10m \
@@ -284,6 +288,10 @@ services:
     # build: .                            # 想本地构建就注释掉 image,放开 build
     container_name: cert-live
     restart: unless-stopped
+    # 显式指定公共 DNS,避免云厂内部 DNS 在容器内不响应(腾讯云 183.60.x 常见坑)
+    dns:
+      - 119.29.29.29
+      - 223.5.5.5
     # 日志轮转:单文件 10MB,最多 3 个,满了滚动覆盖(约上限 30MB)
     logging:
       driver: json-file
