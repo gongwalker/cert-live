@@ -201,6 +201,8 @@ mkdir -p ./data && cd ./data && cd ..
 docker run -d \
   --name cert-live \
   --restart unless-stopped \
+  --dns 119.29.29.29 \
+  --dns 223.5.5.5 \
   -p 8080:8080 \
   --log-driver json-file \
   --log-opt max-size=10m \
